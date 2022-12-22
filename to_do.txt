@@ -5,7 +5,3 @@ Bug fix:
 
 
 Feature:
--Create enemies
--Create life bar
--Create Menu
--Create guns

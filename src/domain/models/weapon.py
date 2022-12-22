@@ -12,50 +12,34 @@ class Weapon(pygame.sprite.Sprite):
     def __init__(self, pos, **kwargs):
         super().__init__()
         
+        # The name of the object, for debugging.
         self.name = kwargs.pop("name", "weapon")
         
-        self.pos: vec = vec((pos))
-        self.dir: vec = vec(0,0)
-        self.last_dir: vec = self.dir.copy()
-        
-        self.image = pygame.Surface(self.pos)
-        self.size = self.image.get_size()
-        	
-        self.rect = self.image.get_rect()
-        self.rect.topleft = self.pos
-        
+        self.dir: int = 0
+        """The direction that this weapon is pointing to (left: -1, right: 1)."""
+        self.last_dir: int = 1
+        """The direction that this weapon was pointing to on the last frame (left: -1, right: 1)."""
         
         self.fire_frames = [pygame.Surface((1,1))]
+        """The animation frames of this weapon when firing/attacking."""
         _path = kwargs.pop("fire_frames_path", None) 
         if _path != None:
             self.fire_frames = game_controller.load_sprites(_path)
             
-        self.image = self.fire_frames[0]
-        self.rect = self.fire_frames[0].get_rect()
+        self.idle_frame = self.fire_frames[0]
+        """The image of this weapon when not animating."""
+            
+        self.image = self.idle_frame
+        """The surface of this weapon."""
         
-        self.reload_frames = []
+        self.current_frame = self.idle_frame
+        """The image of the current animation frame, without rotating."""
         
-        self.current_frame = 0
-        self.firing = False
+        self.damage = kwargs.pop("damage", 0)
         
-    def update(self):
-        self.fire_anim()
+        self.rect = self.image.get_rect()
+        """The rect of this weapon."""
+        self.rect.topleft = pos
         
-    def update_rect(self):
-        self.rect.topleft = (self.pos.x, self.pos.y)
-        
-    def fire_anim(self):
-        if not self.firing: 
-            return
-        self.current_frame += 0.1
-        
-        if self.current_frame > len(self.fire_frames)-1:
-            self.current_frame = 0
-            self.firing = False
-        self.image = self.fire_frames[int(self.current_frame)]
-        
-        if self.dir.x < 0:
-            self.image = pygame.transform.flip(self.image, False, True)
-    
-    def reload_anim(self):
-        pass
+        self.firing_frame = 0
+        """The current frame of firing animation."""

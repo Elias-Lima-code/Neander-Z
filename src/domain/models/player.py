@@ -1,123 +1,177 @@
-import pygame
+import pygame, math as maths
 
 from pygame.math import Vector2 as vec
 
 
 from domain.utils import colors, constants, enums, math_utillity as math
-from domain.services import game_controller
-from domain.models.weapon import Weapon
+from domain.services import game_controller, menu_controller
+from domain.models.weapons.pistol import Pistol
 from domain.models.progress_bar import ProgressBar
+from domain.models.weapons.small_bullet import SmallBullet
+from domain.models.ui.popup_text import Popup
+
 
 
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, image, **kwargs):
+    def __init__(self, pos, character: enums.Characters, **kwargs):
         super().__init__()
+        self.character: enums.Characters = character
+        """Name of the character."""
         self.net_id = kwargs.pop("net_id", 0)
+        """The ID of this player in the network."""
         self.jump_force = kwargs.pop("jump_force", 12)
+        """The force of the player for jumping."""
+        self.movement_speed = kwargs.pop("movement_speed", 0.5)
+        """The movement speed of the player."""
+        self.health = 100
+        """The current health of the player."""
+        self.max_health = self.health
+        """The maximum health of the player."""
+        
         self.name = kwargs.pop("name", "player")
+        """The name of this object, for debugging."""
         
         self.pos: vec = vec((pos))
+        """The X and Y position coordinates of the player."""
         self.speed = kwargs.pop("speed", vec(0,0))
+        """The current X and Y movement speed of the player."""
         self.acceleration: vec = kwargs.pop("acceleration", vec(0,0))
+        """How much the player is accelerating (gaining speed) over time."""
         self.grounded = False
-        
+        """If the player is touching the ground (or any jumpable object)."""
         self.image_scale = 2
+        """How much the image will be scaled from original file."""
         
-        self.image = game_controller.scale_image(pygame.image.load(image), self.image_scale)
-        self.size = self.image.get_size()
+        self.image = game_controller.scale_image(pygame.image.load(constants.get_character_frames(self.character, enums.AnimActions.IDLE)), self.image_scale)
+        """The surface of the player."""
         	
         self.rect = self.image.get_rect()
+        """The rect of the player."""
         self.rect.topleft = self.pos
         
-        # The adjustment that every object should do to their position so the camera is centered on the player.
         self.offset_camera = vec(0,0)
+        """The adjustment that every object should do to their position so the camera is centered on the player."""
         
         self.last_rect = self.rect.copy()
+        """The rect of the player on the previous frame."""
         
-        self.current_weapon: Weapon = None
-        self.weapon_container: pygame.Surface = pygame.Surface((1,1))
-        self.weapon_container_rect: pygame.Rect = pygame.Rect((0,0),(1,1))
-        self.weapon_container_angle: float = 0
+        self.weapon_aim_angle: float = 0
+        """The angle that the container is rotated along with the weapon."""
         self.player2_mouse_pos: vec = vec(0,0)
-        self.player2_offset_camera: vec = vec(0,0)
+        """The mouse position of the other player."""
+        self.player2_rect: pygame.Rect = pygame.Rect(0,0,1,1)
         
-        self.current_weapon = Weapon((self.rect.width, self.rect.centery), fire_frames_path = constants.PISTOL_FOLDER)
-        self.health_bar = ProgressBar(100, pygame.Rect((10, 10), (100, 20)))
+        self.firing = False
+        """If the weapon firing animation is running."""
+        self.current_weapon = Pistol((self.rect.width, self.rect.centery), fire_frames_path = constants.PISTOL_FOLDER)
+        """The weapon on player's hand."""
         
         self.turning_dir = 0
+        """The directino that tha player is turning to (left: -1, right: 1)."""
         self.turning_frame = 0
-        turn_folder = constants.get_character_frames(constants.Characters.CARLOS, constants.Actions.TURN)
+        """The current frame index of the turning animation."""
+        turn_folder = constants.get_character_frames(self.character, enums.AnimActions.TURN)
         self.turn_frames = game_controller.load_sprites(turn_folder)
+        """The frames of the turning animation."""
         
         self.jumping = False
+        """If the jumping animation is running."""
         self.jumping_frame = 0
-        jump_folder = constants.get_character_frames(constants.Characters.CARLOS, constants.Actions.JUMP)
+        """The current frame index of the jumping animation."""
+        jump_folder = constants.get_character_frames(self.character, enums.AnimActions.JUMP)
         self.jump_frames = game_controller.load_sprites(jump_folder)
+        """The frames of the jumping animation."""
         self.jump_frames.append(self.jump_frames[-1])
         
         self.running = False
+        """If the running animation is running."""
         self.running_frame = 0
-        run_folder = constants.get_character_frames(constants.Characters.CARLOS, constants.Actions.RUN)
+        """The current frame index of the running animation."""
+        run_folder = constants.get_character_frames(self.character, enums.AnimActions.RUN)
         self.run_frames = game_controller.load_sprites(run_folder)
+        """The frames of the running animation."""
         
         self.falling_ground = False
+        """If the falling ground animation is running."""
         self.falling_ground_frame = 0
-        fall_ground_folder = constants.get_character_frames(constants.Characters.CARLOS, constants.Actions.FALL_GROUND)
+        """The current frame index of the falling ground animation."""
+        fall_ground_folder = constants.get_character_frames(self.character, enums.AnimActions.FALL_GROUND)
         self.fall_ground_frames = game_controller.load_sprites(fall_ground_folder)
+        """The frames of the falling ground animation."""
         
+        self.weapon_anchor = vec(self.rect.width/2, self.rect.height/3)
+        """The anchor point of the weapon (the center of the circle it orbits around), relative to the player position"""
+        
+        self.health_bar: ProgressBar = None
+        """The health bar of the player."""
+        
+        if self.name == "P1":
+            self.health_bar = ProgressBar(self.health, pygame.Rect((10, 10), (game_controller.screen_size.x/2, 20)), hide_on_full = False)
+        else:
+            self.health_bar = ProgressBar(self.health, pygame.Rect((self.rect.left, self.rect.top), (self.rect.width * 1.3, 8)))
         
     def update_rect(self):
         self.rect.topleft = (self.pos.x, self.pos.y)
+        
+    def load_state(self, state: dict):
+        self.character = state["character"]
+        self.max_health = state["max_health"]
+        self.movement_speed = state["movement_speed"]
+        self.jump_force = state["jump_force"]
     
     # called each frame
-    def update(self):
+    def update(self, **kwargs):
+        group_name = kwargs.pop("group_name", "")
+        if group_name == "jumpable":
+            return
+        
+        is_p1 = self.name == "P1"
+        
         self.health_bar.update()
-        if self.name == "P1":
+        
+        if is_p1:
             _mouse_target = vec(pygame.mouse.get_pos())
             _offset_camera_target = self.offset_camera
         else:
             _mouse_target = self.player2_mouse_pos
             _offset_camera_target = vec(0,0)
-            
-            
-        _size = vec(self.current_weapon.rect.size)
-        _offset = vec(30,30)
+            self.health_bar.rect.centerx = self.rect.centerx
+            self.health_bar.rect.top = self.rect.top - 15
+
+        #region Weapon Animation
         
-        _wrapper = pygame.Surface(_size*2 + vec(self.rect.size) + _offset)
-        _wrapper = _wrapper.convert_alpha()
-        _wrapper.fill((0, 0, 0, 0))
-        _rect = _wrapper.get_rect()
-        _rect.center = vec(self.rect.center) - _offset_camera_target
-        _wrapper.blit(self.current_weapon.image, vec(_size.x + self.rect.width + _offset.x, self.rect.height/2 + _offset.y))
-        
-        if self.name == "P1":
-            img, rec, angle = game_controller.rotate_to_mouse(_wrapper, vec(_rect.center), _mouse_target)
-        else:
-            img, rec, angle = game_controller.rotate_to_angle(_wrapper, vec(_rect.center), self.weapon_container_angle)
-            
-        self.weapon_container = img
-        self.weapon_container_rect = rec
-        self.weapon_container_angle = angle
-        
-        _gun_pos = vec(self.current_weapon.rect.center) + self.pos - _offset_camera_target
         def flip():
-            self.current_weapon.image = pygame.transform.flip(self.current_weapon.image, False, True)
-            self.current_weapon.last_dir = self.current_weapon.dir.copy()
-    
-        _flip_margin = 0
-        if _mouse_target.x < _gun_pos.x - _flip_margin:
-            self.current_weapon.dir.x = -1
-            if self.current_weapon.last_dir.x > self.current_weapon.dir.x:
+            self.current_weapon.current_frame = pygame.transform.flip(self.current_weapon.current_frame, False, True)
+            self.current_weapon.last_dir = self.current_weapon.dir
+            
+        if _mouse_target.x < self.rect.centerx - _offset_camera_target.x:
+            self.current_weapon.dir = -1
+            if self.current_weapon.last_dir > self.current_weapon.dir:
                 flip()
-        elif _mouse_target.x > _gun_pos.x + _flip_margin:
-            self.current_weapon.dir.x = 1
-            if self.current_weapon.last_dir.x < self.current_weapon.dir.x:
+        elif _mouse_target.x > self.rect.centerx- _offset_camera_target.x:
+            self.current_weapon.dir = 1
+            if self.current_weapon.last_dir < self.current_weapon.dir:
                 flip()
         else:
-            self.current_weapon.dir.x = 0
+            self.current_weapon.dir = 0
         
-        self.current_weapon.update()
+        
+        _weapon_center: vec = self.weapon_anchor + self.rect.topleft - _offset_camera_target
+        
+        if is_p1:
+            self.weapon_aim_angle = game_controller.angle_to_mouse(_weapon_center, _mouse_target)
+        
+        # The distance from the weapon anchor to position the weapon
+        _weapon_distance = self.rect.width/2 + 30
+        # Weapon pos
+        self.current_weapon.rect.center = game_controller.point_to_angle_distance(_weapon_center, _weapon_distance, -maths.radians(self.weapon_aim_angle)) + self.current_weapon.barrel_offset
+        # Weapon rotation
+        self.current_weapon.image, self.current_weapon.rect = game_controller.rotate_to_angle(self.current_weapon.current_frame, vec(self.current_weapon.rect.center),self.weapon_aim_angle)
+        
+        #endregion Weapon Animation
+        
+        #region Animation Triggers
         
         if self.turning_dir != 0:
             self.turn_anim(0.3)
@@ -127,18 +181,28 @@ class Player(pygame.sprite.Sprite):
             self.run_anim(abs(self.speed.x / 26.4))
         if self.jumping:
             self.jump_anim(0.2)
+        if self.firing:
+            self.firing = self.current_weapon.fire_anim()
+            
+        #endregion Animation Triggers
+        
+        return
         
     def draw(self, surface: pygame.Surface, offset: vec):
         surface.blit(self.image, self.pos - offset)
         if self.name == "P1":
-            surface.blit(self.weapon_container, vec(self.weapon_container_rect.topleft))
+            surface.blit(self.current_weapon.image, self.current_weapon.rect)
         else:
-            surface.blit(self.weapon_container, vec(self.weapon_container_rect.topleft) - offset)
+            surface.blit(self.current_weapon.image, vec(self.current_weapon.rect.topleft)- offset)
             
         self.health_bar.draw(surface)
         
     def shoot(self):
-        self.current_weapon.firing = True
+        self.firing = True
+        _offset_camera = self.offset_camera if self.name == "P1" else vec(0,0)
+        _bullet_pos = game_controller.point_to_angle_distance(self.weapon_anchor + self.rect.topleft - _offset_camera, self.rect.width/2 + 30, -maths.radians(self.weapon_aim_angle))
+        
+        return SmallBullet(constants.SMALL_BULLET, _bullet_pos, self.weapon_aim_angle, 30, self.current_weapon.damage)
         
     def turn_anim(self, speed: float):
         self.turning_frame = math.clamp(self.turning_frame + (speed * self.turning_dir), 0, len(self.turn_frames)-1)
@@ -152,10 +216,9 @@ class Player(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(self.image, True, False)
             
     def jump_anim(self, speed: float):
-        if self.jumping_frame > len(self.jump_frames):
+        if self.jumping_frame > len(self.jump_frames)-1:
             self.jumping_frame = 0
             self.jumping = False
-            # self.speed.y = -self.jump_force
         self.image = game_controller.scale_image(self.jump_frames[int(self.jumping_frame)], self.image_scale)
         if self.acceleration.x > 0:
             self.image = pygame.transform.flip(self.image, True, False)
@@ -173,14 +236,22 @@ class Player(pygame.sprite.Sprite):
     def run_anim(self, speed: float):
         self.running_frame += speed
         
-        if self.running_frame > len(self.run_frames)-1:
+        if self.running_frame > len(self.run_frames):
             self.running_frame = 0
         self.image = game_controller.scale_image(self.run_frames[int(self.running_frame)], self.image_scale)
         if self.acceleration.x > 0:
             self.image = pygame.transform.flip(self.image, True, False)
         
     def take_damage(self, value: float):
+        if value < 0:
+            return
+        self.health = math.clamp(self.health - value, 0, self.health_bar.max_value)
         self.health_bar.remove_value(value)
+        menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30), **constants.POPUPS["damage"]))
+        
         
     def get_health(self, value: float):
+        if value < 0:
+            return
+        self.health = math.clamp(self.health + value, 0, self.health_bar.max_value)
         self.health_bar.add_value(value)
