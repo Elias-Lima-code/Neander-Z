@@ -5,9 +5,9 @@ from pygame.math import Vector2 as vec
 
 from domain.utils import colors, constants, enums, math_utillity as math
 from domain.services import game_controller, menu_controller
-from domain.models.weapons.pistol import Pistol
+from domain.content.weapons.pistol import Pistol
 from domain.models.progress_bar import ProgressBar
-from domain.models.weapons.small_bullet import SmallBullet
+from domain.content.weapons.small_bullet import SmallBullet
 from domain.models.ui.popup_text import Popup
 
 
@@ -28,6 +28,12 @@ class Player(pygame.sprite.Sprite):
         """The current health of the player."""
         self.max_health = self.health
         """The maximum health of the player."""
+
+        self.score = 0
+        """The amount of points of the player""" 
+
+        self.money = 0
+        """The amount of money of the player""" 
         
         self.name = kwargs.pop("name", "player")
         """The name of this object, for debugging."""
@@ -106,10 +112,14 @@ class Player(pygame.sprite.Sprite):
         self.health_bar: ProgressBar = None
         """The health bar of the player."""
         
-        if self.name == "P1":
+        self.player2_offset = vec(0,0)
+        
+        self.is_player1 = self.name == "P1"
+        
+        if self.is_player1:
             self.health_bar = ProgressBar(self.health, pygame.Rect((10, 10), (game_controller.screen_size.x/2, 20)), hide_on_full = False)
         else:
-            self.health_bar = ProgressBar(self.health, pygame.Rect((self.rect.left, self.rect.top), (self.rect.width * 1.3, 8)))
+            self.health_bar = ProgressBar(self.health, pygame.Rect((self.rect.left, self.rect.top), (self.rect.width * 1.3, 8)), border_width = 1)
         
     def update_rect(self):
         self.rect.topleft = (self.pos.x, self.pos.y)
@@ -125,12 +135,13 @@ class Player(pygame.sprite.Sprite):
         group_name = kwargs.pop("group_name", "")
         if group_name == "jumpable":
             return
+        game = kwargs.pop("game", None)
         
-        is_p1 = self.name == "P1"
+        self.movement(game)
         
         self.health_bar.update()
         
-        if is_p1:
+        if self.is_player1:
             _mouse_target = vec(pygame.mouse.get_pos())
             _offset_camera_target = self.offset_camera
         else:
@@ -159,7 +170,7 @@ class Player(pygame.sprite.Sprite):
         
         _weapon_center: vec = self.weapon_anchor + self.rect.topleft - _offset_camera_target
         
-        if is_p1:
+        if self.is_player1:
             self.weapon_aim_angle = game_controller.angle_to_mouse(_weapon_center, _mouse_target)
         
         # The distance from the weapon anchor to position the weapon
@@ -186,24 +197,123 @@ class Player(pygame.sprite.Sprite):
             
         #endregion Animation Triggers
         
+
         return
         
     def draw(self, surface: pygame.Surface, offset: vec):
         surface.blit(self.image, self.pos - offset)
-        if self.name == "P1":
-            surface.blit(self.current_weapon.image, self.current_weapon.rect)
-        else:
-            surface.blit(self.current_weapon.image, vec(self.current_weapon.rect.topleft)- offset)
+        _target_offset = offset if not self.is_player1 else vec(0,0)
+        
+        surface.blit(self.current_weapon.image, vec(self.current_weapon.rect.topleft) - _target_offset)
+        self.health_bar.draw(surface, _target_offset)
+        
+    
+    def movement(self, game):
+        """Handles the movement of player 1.
+        """
+        if not self.is_player1:
+            return
+        self.last_rect = self.rect.copy()
+        self.acceleration.x = 0
             
-        self.health_bar.draw(surface)
+        pressing_right = pygame.K_d in game.pressed_keys
+        pressing_left = pygame.K_a in game.pressed_keys
+        was_pressing_right = pygame.K_d in game.last_pressed_keys
+        was_pressing_left = pygame.K_a in game.last_pressed_keys
+            
+        # Move right
+        if pressing_right:
+            # pressing right but not left
+            if not pressing_left:
+                self.acceleration.x = self.movement_speed
+                # was pressing both left and right, but released left
+                if was_pressing_left and was_pressing_right:
+                    self.running = False
+                    self.turning_dir = 1
+            # started to press right
+            if not was_pressing_right:
+                self.turning_dir = 1
+            # started to press left and right
+            if pressing_left:
+                self.running = False
+                self.turning_dir = -1
+        elif was_pressing_right:
+                self.running = 0
+                self.turning_dir = -1
+            
+        # Move left
+        if pressing_left:
+            # pressing left but not right
+            if not pressing_right:
+                self.acceleration.x = -self.movement_speed
+                # was pressing both left and right, but released right
+                if was_pressing_left and was_pressing_right:
+                    self.running = False
+                    self.turning_dir = 1
+            # started to press left
+            if not was_pressing_left:
+                self.turning_dir = 1
+            # pressing left and right
+            if pressing_right:
+                self.running = False
+                self.turning_dir = -1
+        elif was_pressing_left and not pressing_right:
+                self.running = 0
+                self.turning_dir = -1
+            
+        # Movement
+        self.acceleration.x += self.speed.x * game.friction
+        self.speed.x += self.acceleration.x
+        self.pos.x += self.speed.x + 0.5 * self.acceleration.x
+        
+        # Gravity
+        game.apply_gravity(self)
+        self.update_rect()
+        
+        # jump
+        _was_grounded = self.grounded
+        _old_pos = self.pos.y
+        self.grounded = self.collision(game, game.jumpable_group, enums.Orientation.VERTICAL)
+        if not _was_grounded and self.grounded and abs(_old_pos - self.pos.y) > 2 :
+            self.jumping = False
+            self.falling_ground = True
+            if pressing_left != pressing_right:
+                self.running = True
+        
+        if pygame.K_SPACE in game.pressed_keys and self.grounded:
+            self.speed.y = -self.jump_force
+            if pressing_left != pressing_right:
+                self.falling_ground = False
+                self.running = False
+                self.jumping = True
+           
+            game.pressed_keys.remove(pygame.K_SPACE)
+    
+        # solid collision
+        self.collision(game, game.collision_group, enums.Orientation.HORIZONTAL)
+        
+    def collision(self, game, targets: pygame.sprite.Group, direction: enums.Orientation):
+        """Handles collision between the player and collidable objects.
+
+        Args:
+            targets (pygame.sprite.Group | list[pygame.sprite.Sprite])
+            direction (enums.Orientation): The direction that the player was moving.
+        """
+        collision_objs = pygame.sprite.spritecollide(self, targets, False)
+        if collision_objs:
+            game.collision(self, collision_objs, direction)
+            return True
+        return False    
+    
         
     def shoot(self):
         self.firing = True
-        _offset_camera = self.offset_camera if self.name == "P1" else vec(0,0)
-        _bullet_pos = game_controller.point_to_angle_distance(self.weapon_anchor + self.rect.topleft - _offset_camera, self.rect.width/2 + 30, -maths.radians(self.weapon_aim_angle))
+        _bullet_pos = game_controller.point_to_angle_distance(self.weapon_anchor + self.rect.topleft, self.rect.width/2 + 5, -maths.radians(self.weapon_aim_angle))
         
-        return SmallBullet(constants.SMALL_BULLET, _bullet_pos, self.weapon_aim_angle, 30, self.current_weapon.damage)
-        
+        return SmallBullet(_bullet_pos, self.weapon_aim_angle, 30, self.current_weapon.damage, self.net_id, game_controller.get_bullet_id())
+    
+    
+                    
     def turn_anim(self, speed: float):
         self.turning_frame = math.clamp(self.turning_frame + (speed * self.turning_dir), 0, len(self.turn_frames)-1)
         
@@ -247,7 +357,12 @@ class Player(pygame.sprite.Sprite):
             return
         self.health = math.clamp(self.health - value, 0, self.health_bar.max_value)
         self.health_bar.remove_value(value)
-        menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30), **constants.POPUPS["damage"]))
+        
+        
+        if self.is_player1:
+            menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera, **constants.POPUPS["damage"]))
+        else:
+            menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera - self.player2_offset, **constants.POPUPS["damage"]))
         
         
     def get_health(self, value: float):
@@ -255,3 +370,4 @@ class Player(pygame.sprite.Sprite):
             return
         self.health = math.clamp(self.health + value, 0, self.health_bar.max_value)
         self.health_bar.add_value(value)
+        menu_controller.popup(Popup(f'+{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera - self.player2_offset, **constants.POPUPS["health"]))

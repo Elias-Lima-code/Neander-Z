@@ -9,7 +9,7 @@ from domain.services import menu_controller, game_controller
 
 class MainMenu(Page):
     def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
+        super().__init__("MainMenu", **kwargs)
         
         menu_controller.load_all_states()
         
@@ -20,7 +20,7 @@ class MainMenu(Page):
 
         
         btn_dict = {
-            "text_font": pygame.font.Font(f'{constants.FONTS_PATH}runescape_uf.ttf', 30),
+            "text_font": pygame.font.Font(constants.PIXEL_FONT, 30),
             "text_color": colors.BLACK
         }
         

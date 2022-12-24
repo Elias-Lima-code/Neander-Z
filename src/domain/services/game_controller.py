@@ -1,19 +1,32 @@
-import pygame, socket, threading, time, jsonpickle
+import pygame, socket, threading, time, jsonpickle, importlib
 from pygame.math import Vector2 as vec
 import math
 import os
 
 from domain.models.network_data import Data as NetData
-from domain.engine import enemies_controller
-from domain.utils import constants
+from domain.utils import constants, enums
 from domain.services import menu_controller
 
-
-playing = False
 screen_size: vec = vec(0,0)
 map_size: vec = vec(0,0)
 
-bullet_groups = []
+bullet_target_groups = []
+enemy_target_groups = []
+
+enemies_count = 0
+bullets_count = 0
+
+
+def get_enemy_id():
+    global enemies_count
+    enemies_count += 1
+    return enemies_count
+
+def get_bullet_id():
+    global bullets_count
+    bullets_count += 1
+    return bullets_count
+
 
 def handle_events(game, events: list[pygame.event.Event]):
     """Iterates through each event and call it's appropriate function.
@@ -25,7 +38,7 @@ def handle_events(game, events: list[pygame.event.Event]):
              menu_controller.quit_app()
         elif event.type == pygame.MOUSEBUTTONDOWN and pygame.mouse.get_pressed()[0]:
             _bullet = game.player.shoot()
-            game.projectiles.append(_bullet)
+            game.bullets_group.add(_bullet)
         elif event.type == pygame.KEYDOWN:
             handle_keydown(event.key, game)
         elif event.type == pygame.KEYUP:
@@ -62,8 +75,7 @@ def restart_game(game):
     game.pressed_keys = []
     game.command_id = 0
     game.map.rect.left = 0
-    game.enemies_group.empty()
-    game.reset_players()
+    game.reset_game()
     
 def load_sprites(folder_path: str):
     """Loads all png files from the specified folter into a list of pygame.Surface.
@@ -121,15 +133,20 @@ def host_game(game, host: str, port: int):
         host (str): The IP address of the server.
         port (int): The port number of the server.
     """    
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind((host, port))
-    server.listen(1)
-    client, addr = server.accept()
+    # server started #
     
-    #define game objects
+    # waiting for client connection attempt
+    message, client_address = server.recvfrom(8)
     
-    #implementar handle connection
-    threading.Thread(target=handle_connection, args=(game, client)).start()
+    message = message.decode('utf-8')
+    # if the message is a connection attempt
+    if message == "CONNECT":
+        # return ok and start the game
+        server.sendto('OK'.encode('utf-8'), client_address)
+        threading.Thread(target=handle_connection, args=(game, server, client_address)).start()
+    
     
 def try_enter_game(game, host: str, port: int, timeout = 2):
     """Joins a server from specified address and port.
@@ -139,65 +156,59 @@ def try_enter_game(game, host: str, port: int, timeout = 2):
         host (str): The IP address of the server.
         port (int): The port number of the server.
     """   
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.settimeout(timeout)
-    result = client.connect_ex((host, port))
-    if result == 0:
-        threading.Thread(target=handle_connection, args=(game, client)).start()
-        return True
-    else:
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # trying to connect to host
+    client.sendto('CONNECT'.encode('utf-8'), (host, port))
+    
+    try:
+        # check for response
+        message, host_address = client.recvfrom(8)
+        message = message.decode('utf-8')
+        
+        # if response is ok, start the game
+        if message == "OK":
+            threading.Thread(target=handle_connection, args=(game, client, host_address)).start()
+            return True
+        else:
+            client.close()
+            return False
+    except ConnectionResetError:
         client.close()
         return False
 
 send_count = 0
 receive_count = 0
 
-def handle_connection(game, client: socket.socket):
+def handle_connection(game, client: socket.socket, remote_address: tuple[str, int]):
     """Function executing on a different thread, sending and receiving data from players.
 
     Args:
         game (domain.engine.game): The game object.
         client (socket.socket): The client object.
         player_id (int): The ID of the player executing this function.
-    """  
-    while playing:
-        
-        player = game.player
+    """ 
+    while menu_controller.playing:
         
         data_to_send = game.get_net_data()
         
+        client.sendto(class_to_json(data_to_send), remote_address)
+        received_buffer = client.recvfrom(8192)[0]
+        # print(len(received_buffer))
         
-        
-        client.send(class_to_json(data_to_send))
-        
-        
-        json_string: str = client.recv(2048).decode('utf-8')
-        
-        if json_string[0] != "{":
-            continue
-        
-        final_json = validate_json(json_string)
-        
-        data: NetData = json_to_class(final_json)
+        json_string: str = received_buffer.decode('utf-8')
+        data: NetData = json_to_class(json_string)
         
         if not data:
             continue
         else:
             game.handle_received_data(data)
             
-        time.sleep(0.01)
-                
+        time.sleep(0.015)
+              
+    
+    print("closing connection")
     client.close()
     
-    
-    
-def validate_json(value):
-    i = value.index("_json_size_") + 17
-    # extra = value[i:]
-    # print('\nvalue:\n\n',value)
-    # print('\extra:\n\n',extra)
-    # print(len(extra))
-    return value[:i]
     
 def class_to_json(data):
     """Encodes the class object to a json object.

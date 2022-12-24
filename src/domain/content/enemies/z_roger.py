@@ -10,8 +10,8 @@ from domain.models.rectangle_sprite import Rectangle
 
 
 class ZRoger(Enemy):
-    def __init__(self, pos, enemy_name, **kwargs):
-        super().__init__(pos, enemy_name, **kwargs)
+    def __init__(self, pos, enemy_name,wave, **kwargs):
+        super().__init__(pos, enemy_name,wave, **kwargs)
         
         self.damage = kwargs.pop("damage", 5)
         self.name = kwargs.pop("name", f"zombie_1")
@@ -41,6 +41,7 @@ class ZRoger(Enemy):
     def attack(self):
         self.hiting = True
         self.hit_rectangle = Rectangle(self.attack_box, vec(self.rect.center) + vec(20 * self.dir.x,-20) )
+       
         collided = self.attack_collision(self.hit_rectangle)
         if len(collided) > 0:
             for c in collided:

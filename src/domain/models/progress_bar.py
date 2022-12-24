@@ -20,7 +20,7 @@ class ProgressBar(pygame.sprite.Sprite):
         self.target_value = self.max_value
         """The value of the target bar, on animation."""
         self.value_ratio = self.max_value / self.rect.width
-        """The ammount of pixels to draw per value."""
+        """The amount of pixels to draw per value."""
         
         self.bar_color = kwargs.pop("max_color", colors.RED)
         """The color of the bar."""
@@ -53,7 +53,7 @@ class ProgressBar(pygame.sprite.Sprite):
         self.image = pygame.Surface(self.rect.size)
         self.value_ratio = self.max_value / self.rect.width
     
-    def draw(self, screen: pygame.Surface):
+    def draw(self, screen: pygame.Surface, offset: vec):
         """Draws the bar on the specified surface.
 
         Args:
@@ -61,7 +61,7 @@ class ProgressBar(pygame.sprite.Sprite):
         """        
         if self.hide_on_full and self.value == self.max_value:
             return
-        screen.blit(self.image, self.rect)
+        screen.blit(self.image, vec(self.rect.topleft) - offset)
         
     def update(self):
         """Updates the bar animation.
@@ -141,4 +141,24 @@ class ProgressBar(pygame.sprite.Sprite):
         if self.border_width > 0:
             pygame.draw.rect(self.image, self.border_color, ((0,0), self.rect.size), self.border_width)
         
+    
+    def set_max_value(self, value):
+        if value < 0:
+            return
+        if value < self.value:
+            self.value = value
+            self.target_value = value
         
+        self.max_value = value
+        self.value_ratio = self.max_value / self.rect.width
+        
+    def set_value(self, value):
+        if value < 0:
+            return
+        
+        self.value = value
+        self.target_value = value
+        
+        if value > self.max_value:
+            self.set_max_value(value)
+    

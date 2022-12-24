@@ -11,7 +11,7 @@ from domain.engine.game import Game
 
 class NewGame(Page):
     def __init__(self, screen: pygame.Surface, **kwargs) -> None:
-        super().__init__(**kwargs)
+        super().__init__("NewGame" ,**kwargs)
         
         self.screen: pygame.Surface = screen
         
@@ -42,7 +42,7 @@ class NewGame(Page):
         
         self.txt_ip_input = TextInput(
             pygame.Rect((self.buttons[0].rect.left, self.line_divider_rect.top + 20), (self.buttons[0].rect.width*0.6,30)),
-            font = pygame.font.Font(f'{constants.FONTS_PATH}runescape_uf.ttf', 22),
+            font = pygame.font.Font(constants.PIXEL_FONT, 22),
             font_color = colors.BLACK,
             background_color = colors.WHITE,
             border_color = colors.LIGHT_GRAY,
@@ -124,18 +124,21 @@ class NewGame(Page):
                 ...
             
             case enums.ClientType.HOST:
+                menu_controller.playing = True
                 game_controller.host_game(game, ip, int(port))
                 
             case enums.ClientType.GUEST:
+                menu_controller.playing = True
                 succeeded = game_controller.try_enter_game(game, ip, int(port), timeout=0.3)
                 if not succeeded:
                     menu_controller.popup(Popup("Cannot connect to host!", vec(self.screen.get_rect().center),
                         **constants.POPUPS["error"]
                         , name = "can't connect to host", unique = True
                         ), center=True)
+                    menu_controller.playing = False
                     return
-              
         menu_controller.pages_history.append(game)
+        
                 
         
     def logo_anim(self, speed: float):
