@@ -26,6 +26,7 @@ class NewGame(Page):
             Button(vec(0,455), f'{constants.IMAGES_PATH}ui\\btn_small.png', scale = 2, text = "Enter Game", on_click = lambda: self.start_game(enums.ClientType.GUEST),**btn_dict),
             # Button(vec(0,515), f'{constants.IMAGES_PATH}ui\\btn_small.png', scale = 2, text = "teste", on_click = self.teste,**btn_dict)
         ])
+
         
         for b in self.buttons:
             b.rect.centerx = self.screen.get_rect().centerx
@@ -66,9 +67,10 @@ class NewGame(Page):
         self.logo_image: pygame.Surface = None
         
         self.set_background(f'{constants.IMAGES_PATH}ui\\bg_main_menu.png')
+        
     
     def teste(self):
-        print("teste")
+        print('teste')
         
     def update(self, **kwargs):
         events = kwargs.pop("events", None)
@@ -76,6 +78,8 @@ class NewGame(Page):
         self.logo_anim(0.1)
         self.txt_ip_input.update(events)
         self.txt_port_input.update(events)
+        
+        
     
         return super().update(**kwargs)
     
@@ -100,9 +104,9 @@ class NewGame(Page):
         self.txt_ip_input.draw(self.screen)
         self.txt_port_input.draw(self.screen)
         
+        super().draw()
         
         
-        return super().draw()
         
     def start_game(self, client_type: enums.ClientType):
         ip = self.txt_ip_input.get_value()
