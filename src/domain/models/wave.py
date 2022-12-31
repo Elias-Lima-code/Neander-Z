@@ -13,6 +13,7 @@ class Wave():
         self.game = game
         self.enemies_current_id = 0
         self.enemies_group = pygame.sprite.Group()
+        self.enemies_hitbox_group = pygame.sprite.Group()
         self.max_alive_enemies = kwargs.pop("max_alive_enemies", 5)
         self.total_enemies = kwargs.pop("total_enemies", 10)
         self.wave_step = kwargs.pop("wave_step", 1)
@@ -38,6 +39,10 @@ class Wave():
 
     def spawn_enemy(self, enemy: Enemy):
         self.enemies_group.add(enemy)
+        if enemy.hitbox_head != None:
+            self.enemies_hitbox_group.add(enemy.hitbox_head)
+        if enemy.hitbox_body != None:
+            self.enemies_hitbox_group.add(enemy.hitbox_body)
         
     def start(self):
         if self.game.client_type == enums.ClientType.SINGLE:
@@ -68,19 +73,26 @@ class Wave():
     def handle_score(self, enemy_type: enums.Enemies, attacker):
         if attacker == None:
             return
+        _new_score = 0
+        
         if attacker == 3:
             attacker = 1
         match enemy_type:
             case enums.Enemies.Z_ROGER:
-                self.players_scores[attacker].score += 53
+                _new_score += 53
                 # dinheiro dividi por 4    
 
         self.players_scores[attacker].kills_count += 1
         
-        self.game.player.score = self.players_scores[1].score 
+        if attacker == 1:
+            self.game.player.score += _new_score 
+        else:
+            if self.game.client_type != enums.ClientType.SINGLE:
+                self.game.player2.score += _new_score
 
-        if self.game.client_type != enums.ClientType.SINGLE:
-            self.game.player2.score = self.players_scores[2].score 
+        self.players_scores[attacker].score += _new_score
+        
+
 
 
 

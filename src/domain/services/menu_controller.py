@@ -1,4 +1,5 @@
 import pygame, sys, datetime
+from pygame import locals as ls
 from pygame.math import Vector2 as vec
 
 from domain.services.save_manager import SaveManager
@@ -12,7 +13,7 @@ player_state = {
     "state_name": "player",
     "character": enums.Characters.CARLOS,
     "movement_speed": 0.5,
-    "jump_force": 12,
+    "jump_force": 9,
     "max_health": 100
 }
 config_state = {
@@ -102,12 +103,20 @@ def fade_in_color(color: tuple[int,int,int], target_alpha: int, start_time: date
         alpha = (target_alpha*percentage)/100
         alpha = math.clamp(alpha, 0, target_alpha)
         return colors.set_alpha(color, int(alpha))
-        
 
+def play_music(music_name, volume: float, repeat_count: int = -1 ):
+    pygame.mixer.music.stop()
+    pygame.mixer.music.load(music_name)
+    pygame.mixer.music.set_volume(volume)
+    pygame.mixer.music.play(repeat_count)
+
+        
+clock = pygame.time.Clock()
 def app_loop():
-    global pages_history, playing
-    clock = pygame.time.Clock()
-    while True:
+    
+    pygame.event.set_allowed([ls.QUIT, ls.KEYDOWN, ls.KEYUP, ls.MOUSEMOTION, ls.MOUSEBUTTONDOWN, ls.MOUSEBUTTONUP, ls.USEREVENT])
+    global clock, pages_history, playing
+    while 1:
         _events = pygame.event.get()
         for event in _events:
             if event.type == pygame.QUIT:

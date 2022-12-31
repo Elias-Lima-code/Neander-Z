@@ -6,19 +6,22 @@ from domain.models.ui.pages.new_game import NewGame
 from domain.models.ui.button import Button
 from domain.utils import constants, colors
 from domain.services import menu_controller, game_controller
+from domain.utils import enums
 
 class MainMenu(Page):
     def __init__(self, **kwargs) -> None:
         super().__init__("MainMenu", **kwargs)
         
         menu_controller.load_all_states()
-        
+        pygame.mixer.pre_init(44100, -16, 2, 500)
+        pygame.mixer.init()
         pygame.init()
+
+        
         
         self.monitor_size: vec = vec(900, 600)
         self.screen: pygame.Surface = pygame.display.set_mode(self.monitor_size)
 
-        
         btn_dict = {
             "text_font": pygame.font.Font(constants.PIXEL_FONT, 30),
             "text_color": colors.BLACK
@@ -42,13 +45,17 @@ class MainMenu(Page):
         self.logo_image: pygame.Surface = None
         
         self.set_background(f'{constants.IMAGES_PATH}ui\\bg_main_menu.png')
-        
+    
         
     def open_new_game(self):
+        
         new_game = NewGame(self.screen)
         menu_controller.pages_history.append(new_game)
         
     def update(self, **kwargs):
+        if not pygame.mixer.music.get_busy():
+            menu_controller.play_music(constants.get_music(enums.Music.MUSIC_MENU), 0.2, -1)
+            
         self.logo_anim(0.1)
     
         return super().update(**kwargs)

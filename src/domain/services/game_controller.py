@@ -1,4 +1,4 @@
-import pygame, socket, threading, time, jsonpickle, importlib
+import pygame, socket, threading, time
 from pygame.math import Vector2 as vec
 import math
 import os
@@ -38,12 +38,17 @@ def handle_events(game, events: list[pygame.event.Event]):
     for event in events:
         if event.type == pygame.QUIT:
              menu_controller.quit_app()
-        elif event.type == pygame.MOUSEBUTTONDOWN and pygame.mouse.get_pressed()[0]:
-            _bullet = game.player.shoot()
-            game.bullets_group.add(_bullet)
-        elif event.type == pygame.KEYDOWN:
+        elif event.type == pygame.MOUSEBUTTONDOWN and pygame.mouse.get_pressed()[0] and game.focused:
+            _bullets = game.player.shoot()
+            if _bullets != None:
+                if type(_bullets) != list:
+                    _bullets = [_bullets]
+                if len(_bullets) > 0:
+                    for b in _bullets:
+                        game.bullets_group.add(b)
+        elif event.type == pygame.KEYDOWN and game.focused:
             handle_keydown(event.key, game)
-        elif event.type == pygame.KEYUP:
+        elif event.type == pygame.KEYUP and game.focused:
             handle_keyup(event.key, game)
                 
                 
@@ -74,12 +79,14 @@ def restart_game(game):
     Args:
         game (domain.engine.game): The game to be restarted.
     """
+    pygame.mixer.music.stop()
+    if game.client_type != enums.ClientType.GUEST:
+        game.command_id = 0
     game.pressed_keys = []
-    game.command_id = 0
     game.map.rect.left = 0
     game.reset_game()
     
-def load_sprites(folder_path: str):
+def load_sprites(folder_path: str, scale = 1):
     """Loads all png files from the specified folter into a list of pygame.Surface.
 
     Args:
@@ -92,7 +99,11 @@ def load_sprites(folder_path: str):
     if not os.path.exists(_path):
         return
     
-    images = [pygame.image.load(_path + "\\" + img) for img in os.listdir(_path) if img.endswith('.png')]
+    if scale != 1:
+        images = [scale_image(pygame.image.load(_path + "\\" + img), scale) for img in os.listdir(_path) if img.endswith('.png')]
+    else:
+        images = [pygame.image.load(_path + "\\" + img) for img in os.listdir(_path) if img.endswith('.png')]
+    
     return images
     
 def scale_image(image: pygame.Surface, scale: float):
@@ -191,15 +202,18 @@ def handle_connection(game, client: socket.socket, remote_address: tuple[str, in
         player_id (int): The ID of the player executing this function.
     """ 
     client.settimeout(2)
+    
     while menu_controller.playing:
         
+        #sending
         net_data = game.get_net_data()
         data_to_send = net_data._get_buffer()
-        
         client.sendto(data_to_send, remote_address)
-        received_buffer = client.recvfrom(4096)[0]
         
+        #receiving
+        received_buffer = client.recvfrom(4096)[0]
         net_data._load_buffer(received_buffer)
+        # print(len(received_buffer))
         
         game.handle_received_data(net_data)
             
@@ -209,26 +223,3 @@ def handle_connection(game, client: socket.socket, remote_address: tuple[str, in
     print("closing connection")
     client.close()
     
-    
-def class_to_json(data):
-    """Encodes the class object to a json object.
-
-    Args:
-        data (class): The object to be converted.
-
-    Returns:
-        list[byte]: A array of bytes containing a json string version of the class.
-    """    
-    return jsonpickle.encode(data).encode('utf-8')
-
-def json_to_class(data):
-    """Decodes the json string to a class object.
-
-    Args:
-        data (list[byte]): A array of bytes containing a json string version of the class.
-
-    Returns:
-        class: The converted class object.
-    """  
-
-    return jsonpickle.decode(data)

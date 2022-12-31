@@ -1,13 +1,13 @@
-import pygame, math as maths
+import pygame, math as maths, random 
 
 from pygame.math import Vector2 as vec
 
 
 from domain.utils import colors, constants, enums, math_utillity as math
 from domain.services import game_controller, menu_controller
-from domain.content.weapons.pistol import Pistol
+from domain.content.weapons.shotgun import Shotgun
 from domain.models.progress_bar import ProgressBar
-from domain.content.weapons.small_bullet import SmallBullet
+from domain.models.backpack import BackPack
 from domain.models.ui.popup_text import Popup
 
 
@@ -20,7 +20,7 @@ class Player(pygame.sprite.Sprite):
         """Name of the character."""
         self.net_id = kwargs.pop("net_id", 0)
         """The ID of this player in the network."""
-        self.jump_force = kwargs.pop("jump_force", 12)
+        self.jump_force = kwargs.pop("jump_force", 9)
         """The force of the player for jumping."""
         self.movement_speed = kwargs.pop("movement_speed", 0.5)
         """The movement speed of the player."""
@@ -49,7 +49,7 @@ class Player(pygame.sprite.Sprite):
         self.image_scale = 2
         """How much the image will be scaled from original file."""
         
-        self.image = game_controller.scale_image(pygame.image.load(constants.get_character_frames(self.character, enums.AnimActions.IDLE)), self.image_scale)
+        self.image = game_controller.scale_image(pygame.image.load(constants.get_character_frames(self.character, enums.AnimActions.IDLE)), self.image_scale).convert()
         """The surface of the player."""
         	
         self.rect = self.image.get_rect()
@@ -62,15 +62,14 @@ class Player(pygame.sprite.Sprite):
         self.last_rect = self.rect.copy()
         """The rect of the player on the previous frame."""
         
-        self.weapon_aim_angle: float = 0
-        """The angle that the container is rotated along with the weapon."""
         self.player2_mouse_pos: vec = vec(0,0)
         """The mouse position of the other player."""
         self.player2_rect: pygame.Rect = pygame.Rect(0,0,1,1)
         
-        self.firing = False
-        """If the weapon firing animation is running."""
-        self.current_weapon = Pistol((self.rect.width, self.rect.centery), fire_frames_path = constants.PISTOL_FOLDER)
+        
+        self.backpack = BackPack()
+        
+        self.current_weapon = Shotgun((self.rect.width, self.rect.centery), weapon_anchor = vec(self.rect.width/2, self.rect.height/3), backpack = self.backpack, start_ammo = self.backpack.pistol_ammo)
         """The weapon on player's hand."""
         
         self.turning_dir = 0
@@ -106,21 +105,23 @@ class Player(pygame.sprite.Sprite):
         self.fall_ground_frames = game_controller.load_sprites(fall_ground_folder)
         """The frames of the falling ground animation."""
         
-        self.weapon_anchor = vec(self.rect.width/2, self.rect.height/3)
-        """The anchor point of the weapon (the center of the circle it orbits around), relative to the player position"""
-        
         self.health_bar: ProgressBar = None
         """The health bar of the player."""
         
         self.player2_offset = vec(0,0)
         
         self.is_player1 = self.name == "P1"
+        self.jump_sounds = pygame.mixer.Sound( f'{constants.SOUNDS_PATH}sound_effects\\sfx_player\\jump\\{self.character.value}\\jump.mp3')
+        self.fall_sound = pygame.mixer.Sound( f'{constants.SOUNDS_PATH}sound_effects\\sfx_player\\fall_ground\\{self.character.value}\\fall_ground.mp3')
+
+        self.reload_popup: Popup = None
         
         if self.is_player1:
             self.health_bar = ProgressBar(self.health, pygame.Rect((10, 10), (game_controller.screen_size.x/2, 20)), hide_on_full = False)
         else:
             self.health_bar = ProgressBar(self.health, pygame.Rect((self.rect.left, self.rect.top), (self.rect.width * 1.3, 8)), border_width = 1)
-        
+    
+    
     def update_rect(self):
         self.rect.topleft = (self.pos.x, self.pos.y)
         
@@ -140,6 +141,7 @@ class Player(pygame.sprite.Sprite):
         self.movement(game)
         
         self.health_bar.update()
+        self.current_weapon.update()
         
         if self.is_player1:
             _mouse_target = vec(pygame.mouse.get_pos())
@@ -156,29 +158,30 @@ class Player(pygame.sprite.Sprite):
             self.current_weapon.current_frame = pygame.transform.flip(self.current_weapon.current_frame, False, True)
             self.current_weapon.last_dir = self.current_weapon.dir
             
-        if _mouse_target.x < self.rect.centerx - _offset_camera_target.x:
-            self.current_weapon.dir = -1
-            if self.current_weapon.last_dir > self.current_weapon.dir:
-                flip()
-        elif _mouse_target.x > self.rect.centerx- _offset_camera_target.x:
-            self.current_weapon.dir = 1
-            if self.current_weapon.last_dir < self.current_weapon.dir:
-                flip()
-        else:
-            self.current_weapon.dir = 0
+        if game.focused:
+            if _mouse_target.x < self.rect.centerx - _offset_camera_target.x:
+                self.current_weapon.dir = -1
+                if self.current_weapon.last_dir > self.current_weapon.dir:
+                    flip()
+            elif _mouse_target.x > self.rect.centerx- _offset_camera_target.x:
+                self.current_weapon.dir = 1
+                if self.current_weapon.last_dir < self.current_weapon.dir:
+                    flip()
+            else:
+                self.current_weapon.dir = 0
         
         
-        _weapon_center: vec = self.weapon_anchor + self.rect.topleft - _offset_camera_target
+        _weapon_center: vec = self.current_weapon.weapon_anchor + self.rect.topleft - _offset_camera_target
         
-        if self.is_player1:
-            self.weapon_aim_angle = game_controller.angle_to_mouse(_weapon_center, _mouse_target)
+        if self.is_player1 and game.focused:
+            self.current_weapon.weapon_aim_angle = game_controller.angle_to_mouse(_weapon_center, _mouse_target)
         
         # The distance from the weapon anchor to position the weapon
         _weapon_distance = self.rect.width/2 + 30
         # Weapon pos
-        self.current_weapon.rect.center = game_controller.point_to_angle_distance(_weapon_center, _weapon_distance, -maths.radians(self.weapon_aim_angle)) + self.current_weapon.barrel_offset
+        self.current_weapon.rect.center = game_controller.point_to_angle_distance(_weapon_center, _weapon_distance, -maths.radians(self.current_weapon.weapon_aim_angle)) + self.current_weapon.barrel_offset
         # Weapon rotation
-        self.current_weapon.image, self.current_weapon.rect = game_controller.rotate_to_angle(self.current_weapon.current_frame, vec(self.current_weapon.rect.center),self.weapon_aim_angle)
+        self.current_weapon.image, self.current_weapon.rect = game_controller.rotate_to_angle(self.current_weapon.current_frame, vec(self.current_weapon.rect.center),self.current_weapon.weapon_aim_angle)
         
         #endregion Weapon Animation
         
@@ -192,8 +195,6 @@ class Player(pygame.sprite.Sprite):
             self.run_anim(abs(self.speed.x / 26.4))
         if self.jumping:
             self.jump_anim(0.2)
-        if self.firing:
-            self.firing = self.current_weapon.fire_anim()
             
         #endregion Animation Triggers
         
@@ -205,7 +206,23 @@ class Player(pygame.sprite.Sprite):
         _target_offset = offset if not self.is_player1 else vec(0,0)
         
         surface.blit(self.current_weapon.image, vec(self.current_weapon.rect.topleft) - _target_offset)
-        self.health_bar.draw(surface, _target_offset)
+
+        #popup
+        if self.current_weapon.magazine_bullets == 0:
+            if self.reload_popup == None:
+                self.reload_popup = Popup("Reload: R", vec(self.rect.centerx, self.rect.top - 50) - _target_offset, name="Reload: R", unique= True, **constants.POPUPS["blink"])
+                menu_controller.popup(self.reload_popup)
+            else:
+                self.reload_popup.rect.centerx = self.rect.centerx - self.offset_camera.x
+                self.reload_popup.rect.bottom = self.rect.top - 10 - self.offset_camera.y
+                if self.backpack.get_ammo(self.current_weapon.bullet_type) == 0:
+                    self.reload_popup.text = "No ammo!"
+        elif self.reload_popup != None:
+           self.reload_popup.destroy()
+           self.reload_popup = None
+        
+        if not self.is_player1:
+            self.health_bar.draw(surface, _target_offset)
         
     
     def movement(self, game):
@@ -277,15 +294,18 @@ class Player(pygame.sprite.Sprite):
         if not _was_grounded and self.grounded and abs(_old_pos - self.pos.y) > 2 :
             self.jumping = False
             self.falling_ground = True
+            self.fall_sound.play()
             if pressing_left != pressing_right:
                 self.running = True
         
         if pygame.K_SPACE in game.pressed_keys and self.grounded:
             self.speed.y = -self.jump_force
+            self.jump_sounds.play()
             if pressing_left != pressing_right:
                 self.falling_ground = False
                 self.running = False
                 self.jumping = True
+                
            
             game.pressed_keys.remove(pygame.K_SPACE)
     
@@ -307,12 +327,12 @@ class Player(pygame.sprite.Sprite):
     
         
     def shoot(self):
-        self.firing = True
-        _bullet_pos = game_controller.point_to_angle_distance(self.weapon_anchor + self.rect.topleft, self.rect.width/2 + 5, -maths.radians(self.weapon_aim_angle))
-        
-        return SmallBullet(_bullet_pos, self.weapon_aim_angle, 30, self.current_weapon.damage, self.net_id, game_controller.get_bullet_id())
+        _bullet_pos = game_controller.point_to_angle_distance(self.current_weapon.weapon_anchor + self.rect.topleft + vec(0,self.current_weapon.bullet_spawn_offset.y), self.current_weapon.bullet_spawn_offset.x, -maths.radians(self.current_weapon.weapon_aim_angle))
+        return self.current_weapon.shoot(_bullet_pos, self.net_id)
     
-    
+    def reload_weapon(self):
+        return self.current_weapon.reload()
+   
                     
     def turn_anim(self, speed: float):
         self.turning_frame = math.clamp(self.turning_frame + (speed * self.turning_dir), 0, len(self.turn_frames)-1)
