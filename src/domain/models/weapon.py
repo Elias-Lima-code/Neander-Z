@@ -16,6 +16,14 @@ class Weapon(pygame.sprite.Sprite):
         
         self.player_backpack: BackPack = kwargs.pop("backpack", None)
         self.bullet_type: enums.BulletType = kwargs.pop("bullet_type", enums.BulletType.PISTOL)
+        self.weapon_type: enums.Weapons = kwargs.pop("weapon_type", enums.Weapons.P_1911)
+        self.fire_mode = kwargs.pop("fire_mode", enums.FireMode.SEMI_AUTO)
+        """How this weapon fires (auto, semi-auto, pump, single shot...)."""
+        self.reload_type = kwargs.pop("reload_type", enums.ReloadType.MAGAZINE)
+        self.is_primary = kwargs.pop("is_primary", False)
+        
+        self.bullet_max_range = kwargs.pop("bullet_max_range", 600)
+        self.bullet_min_range = kwargs.pop("bullet_min_range", 500)
         
         self.damage = kwargs.pop("damage", 0)
         """The damage of the weapon's bullet."""
@@ -23,20 +31,23 @@ class Weapon(pygame.sprite.Sprite):
         """The speed of the weapon's bullet."""
         self.fire_rate = kwargs.pop("fire_rate", 1)
         """The speed of the weapon's bullet."""
-        self.magazine_size = 7
+        self.magazine_size = kwargs.pop("magazine_size", 7)
         """The magazine capacity of the weapon."""
         self.magazine_bullets = self.magazine_size
         """The number of bullets currently in the magazine."""
         
-        self.start_total_ammo = self.player_backpack.get_ammo(self.bullet_type) 
+        self.weapon_distance = kwargs.pop("weapon_distance",0)
+        """The distance from the weapon anchor to the weapon position."""
+        
+        self.start_total_ammo = self.player_backpack.get_ammo(self.bullet_type) if self.player_backpack != None else 0
         """The start number of extra bullets."""
+        
         
         self.fire_rate_ratio = 1000
         self.reload_delay_ms = 1000
         
         self.last_shot_time = None
         self.reload_start_time = None
-        
         
         self.dir: int = 0
         """The direction that this weapon is pointing to (left: -1, right: 1)."""
@@ -45,9 +56,6 @@ class Weapon(pygame.sprite.Sprite):
         
         self.fire_frames = [pygame.Surface((1,1))]
         """The animation frames of this weapon when firing/attacking."""
-        _path = kwargs.pop("fire_frames_path", None) 
-        if _path != None:
-            self.fire_frames = game_controller.load_sprites(_path)
             
         self.idle_frame = self.fire_frames[0]
         """The image of this weapon when not animating."""
@@ -86,12 +94,16 @@ class Weapon(pygame.sprite.Sprite):
         self.reload_start_sound: pygame.mixer.Sound = None
         self.reload_end_sound: pygame.mixer.Sound = None
 
-    def shoot(self, bullet_pos: vec, player_net_id: int):
+    def shoot(self, bullet_pos: vec, player_net_id: int, **kwargs):
         self.firing = True
         self.magazine_bullets -= 1
+        
 
     def update(self, **kwargs):
         pass
+    
+    def draw(self, screen: pygame.Surface, offset: vec):
+        screen.blit(self.image, vec(self.rect.topleft) - vec(0,0))
            
     
            
@@ -108,7 +120,7 @@ class Weapon(pygame.sprite.Sprite):
         if self.reload_start_time != None and now - datetime.timedelta(milliseconds= self.reload_delay_ms) <= self.reload_start_time:
             return
         # if is still firing
-        if self.firing:
+        if self.firing or self.pumping:
             return
         
         self.reloading = True
@@ -119,7 +131,7 @@ class Weapon(pygame.sprite.Sprite):
         diff = self.player_backpack.get_ammo(self.bullet_type) - to_load
         
         if self.reload_start_sound != None:
-            self.reload_start_sound.play() 
+            self.reload_start_sound.play()
     
         if diff >= 0:
             self.magazine_bullets += to_load
@@ -131,11 +143,11 @@ class Weapon(pygame.sprite.Sprite):
   
             
     def can_shoot(self):
-        
         # if ran out of ammo
         if self.magazine_bullets <= 0:
+            menu_controller.pages_history[-1].pressed_keys.remove("mouse_0")
             if self.empty_sound != None:
-                self.empty_sound.play() 
+                self.empty_sound.play()
             return False
         
         _now = datetime.datetime.now()
@@ -148,7 +160,7 @@ class Weapon(pygame.sprite.Sprite):
             self.last_shot_time = _now
             return True
         
-        if _now - datetime.timedelta(milliseconds= self.fire_rate_ratio/self.fire_rate) >  self.last_shot_time:
+        if _now - datetime.timedelta(milliseconds= self.fire_rate_ratio/self.fire_rate) > self.last_shot_time:
             return True
         
         return False

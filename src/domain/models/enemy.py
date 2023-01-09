@@ -2,7 +2,7 @@ import pygame, datetime
 from pygame.math import Vector2 as vec
 
 from domain.utils import colors, enums, constants, math_utillity as math
-from domain.services import game_controller, menu_controller
+from domain.services import game_controller, menu_controller as mc, resources
 from domain.models.progress_bar import ProgressBar
 from domain.models.ui.popup_text import Popup
 from domain.models.rectangle_sprite import Rectangle
@@ -25,8 +25,12 @@ class Enemy(pygame.sprite.Sprite):
         self.head_shot_multiplier = kwargs.pop("head_shot_multiplier", 2)
         self.attack_targets = game_controller.enemy_target_groups
         self.client_type = enums.ClientType.UNDEFINED
+        
+        self.headshot_score_multiplier = kwargs.pop("headshot_score_multiplier", 2)
+        self.kill_score = kwargs.pop("kill_score", 10)
 
         self.killer = 0
+        self.headshot_kill = False
         self.death_time: datetime.datetime = None
         self.fade_out_ms = 1000
         self.image_alpha = 255
@@ -44,20 +48,20 @@ class Enemy(pygame.sprite.Sprite):
         """If the running animation is running."""
         self.run_frame = 0
         """The current frame index of the running animation."""
-        run_folder = constants.get_zombie_frames(self.enemy_name, enums.AnimActions.RUN)
-        self.run_frames = game_controller.load_sprites(run_folder)
+        run_folder = resources.get_enemy_path(self.enemy_name, enums.AnimActions.RUN)
+        self.run_frames = game_controller.load_sprites(run_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
         
         self.attacking = False
         self.attack_frame = 0
-        attack_folder = constants.get_zombie_frames(self.enemy_name, enums.AnimActions.ATTACK)
-        self.attack_frames = game_controller.load_sprites(attack_folder)
+        attack_folder = resources.get_enemy_path(self.enemy_name, enums.AnimActions.ATTACK)
+        self.attack_frames = game_controller.load_sprites(attack_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
 
         self.dying = False
         self.death_frame = 0
-        death_folder = constants.get_zombie_frames(self.enemy_name, enums.AnimActions.DEATH)
-        self.death_frames = game_controller.load_sprites(death_folder)
+        death_folder = resources.get_enemy_path(self.enemy_name, enums.AnimActions.DEATH)
+        self.death_frames = game_controller.load_sprites(death_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
         
-        self.image = game_controller.scale_image(pygame.image.load(constants.get_zombie_frames(self.enemy_name, enums.AnimActions.IDLE)), self.image_scale).convert()
+        self.image = game_controller.scale_image(pygame.image.load(resources.get_enemy_path(self.enemy_name, enums.AnimActions.IDLE)), self.image_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
         self.size = self.image.get_size()
         	
         self.rect = self.image.get_rect()
@@ -77,17 +81,12 @@ class Enemy(pygame.sprite.Sprite):
         
         #debug
         self.blit_debug = False
-        
-    def calculate_distance(self, d1: vec, d2: vec):
-        distance = d1 - d2
-        x, y = abs(distance.x), abs(distance.y)
-        return vec(x, y)
     
     def get_closest_player(self, p1, p2):
         if p2 == None:
             return p1
         
-        closest = sorted([p1, p2], key= lambda p: self.calculate_distance(vec(p.rect.center), vec(self.rect.center)).x)[0]
+        closest = sorted([p1, p2], key= lambda p: vec(p.rect.center).distance_to(vec(self.rect.center)))[0]
         return closest
     
     def client_update(self, **kwargs):
@@ -142,10 +141,10 @@ class Enemy(pygame.sprite.Sprite):
         # Movement
         if self.dir.x != 0:
             self.acceleration.x = self.movement_speed * self.dir.x
-        if not self.attacking and not self.dying:
-            self.acceleration.x += self.speed.x * game.friction
-            self.speed.x += self.acceleration.x
-            self.pos.x += self.speed.x + 0.5 * self.acceleration.x
+        # if not self.attacking and not self.dying:
+        #     self.acceleration.x += self.speed.x * game.friction
+        #     self.speed.x += self.acceleration.x * mc.dt
+        #     self.pos.x += (self.speed.x + 0.5 * self.acceleration.x) * mc.dt
         
         # Gravity
         game.apply_gravity(self)
@@ -213,14 +212,14 @@ class Enemy(pygame.sprite.Sprite):
     def fade_out_anim(self):
         anim_end = (self.death_time + datetime.timedelta(milliseconds=self.fade_out_ms))
         
-        self.image_alpha = menu_controller.fade_out_color(colors.WHITE, 255, self.death_time, anim_end)[3]
+        self.image_alpha = mc.fade_out_color(colors.WHITE, 255, self.death_time, anim_end)[3]
 
         if self.image_alpha <= 0:
             self.kill(self.killer)
         
         
     def kill(self, attacker):
-        self.wave.handle_score(self.enemy_name, attacker)
+        self.wave.handle_score(self, attacker, self.headshot_kill)
         self.wave.enemies_count -= 1
         self.wave.current_wave_step += 1
         if self.hitbox_head != None:
@@ -271,13 +270,14 @@ class Enemy(pygame.sprite.Sprite):
                 self.hitbox_body = None
                 
             self.dying = True
+            self.headshot_kill = head_shot
             
                 
         _popup_args = constants.POPUPS["damage"].copy()
         if head_shot:
             _popup_args["text_color"] = colors.YELLOW
             
-        menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.player_offset, **_popup_args))
+        mc.popup(Popup(f'-{round(value,2)}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.player_offset, **_popup_args))
         return not self.is_alive
 
 
@@ -288,7 +288,7 @@ class Enemy(pygame.sprite.Sprite):
         self.health = math.clamp(self.health + value, 0, self.health_bar.max_value)
         
         self.health_bar.add_value(value)
-        menu_controller.popup(Popup(f'+{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.player_offset, **constants.POPUPS["health"]))
+        mc.popup(Popup(f'+{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.player_offset, **constants.POPUPS["health"]))
         
       
     

@@ -1,13 +1,14 @@
-import pygame, sys, datetime
+import pygame, sys, datetime, time
 from pygame import locals as ls
 from pygame.math import Vector2 as vec
 
 from domain.services.save_manager import SaveManager
+from domain.services import resources
 from domain.utils import constants, enums, math_utillity as math, colors
 from domain.models.ui.popup_text import Popup
 
 pages_history: list = []
-save_manager = SaveManager('.save', constants.SAVE_PATH)
+save_manager = SaveManager('.save', resources.SAVE_PATH)
 playing = False
 player_state = {
     "state_name": "player",
@@ -21,6 +22,9 @@ config_state = {
     "ip": "",
     "port": ""
 }
+
+dt = 0
+
 
 popup_group = pygame.sprite.Group()
 
@@ -109,22 +113,26 @@ def play_music(music_name, volume: float, repeat_count: int = -1 ):
     pygame.mixer.music.load(music_name)
     pygame.mixer.music.set_volume(volume)
     pygame.mixer.music.play(repeat_count)
-
         
 clock = pygame.time.Clock()
 def app_loop():
     
+    last_frame_time = time.time()
     pygame.event.set_allowed([ls.QUIT, ls.KEYDOWN, ls.KEYUP, ls.MOUSEMOTION, ls.MOUSEBUTTONDOWN, ls.MOUSEBUTTONUP, ls.USEREVENT])
-    global clock, pages_history, playing
+    global clock, pages_history, playing, dt
     while 1:
+        dt = (time.time() - last_frame_time) * 60
+        last_frame_time = time.time()
+        
+        current_page = pages_history[-1]
+
         _events = pygame.event.get()
         for event in _events:
             if event.type == pygame.QUIT:
                 quit_app()
-            if event.type == pygame.KEYDOWN and len(popup_group.sprites()) > 0:
-                popup_group.sprites()[0].hide()
+            if event.type == pygame.KEYDOWN:
+                pass
                 
-        current_page = pages_history[-1]
         
         playing = current_page.name == "Game"
             
@@ -137,6 +145,11 @@ def app_loop():
         
         for p in popup_group.sprites():
             p.draw(current_page.screen)
+            
+        _txt_fps = get_text_surface(f'fps: {clock.get_fps():.0f}', colors.LIGHT_GRAY, pygame.font.SysFont('calibri', 20))
+        _txt_fps_rect = _txt_fps.get_rect()
+        _txt_fps_rect.topright = (current_page.screen.get_width() - 20, 20)
+        current_page.screen.blit(_txt_fps, _txt_fps_rect)
             
         pygame.display.update()
         clock.tick(60)

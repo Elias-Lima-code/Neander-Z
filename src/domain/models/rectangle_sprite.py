@@ -12,6 +12,9 @@ class Rectangle(pygame.sprite.Sprite, IGravitable):
         self.pos = vec(pos)
         """The position of the top-left corner of the surface.""" 
         
+        self.id = kwargs.pop("id", 0)
+        """The id of this rectangle.""" 
+        
         self.image = pygame.Surface(size, pygame.SRCALPHA)
         """The map image/surface.""" 
         
@@ -44,6 +47,8 @@ class Rectangle(pygame.sprite.Sprite, IGravitable):
         
         self.get_health_callback = kwargs.pop("get_health_callback", lambda value: None)
         """The function to be called when get_health is called.""" 
+        
+        self.radius = kwargs.pop("radius", 0)
         
         	
         self.rect.topleft = self.pos

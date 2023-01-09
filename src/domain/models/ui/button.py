@@ -2,7 +2,7 @@ import pygame
 from pygame.math import Vector2 as vec
 
 from domain.utils import colors, constants, enums
-from domain.services import game_controller, menu_controller
+from domain.services import game_controller, menu_controller, resources
 
 #button class
 class Button(pygame.sprite.Sprite):
@@ -24,8 +24,8 @@ class Button(pygame.sprite.Sprite):
         self.hover_scale = kwargs.pop("hover_scale", 1.1)
         
         self.last_clicked = True
-        self.sound_clicked = pygame.mixer.Sound(constants.get_sfx(enums.SFXType.UI,enums.SFXActions.CLICKED, enums.SFXName.BTN_CLICK))
-        self.sound_hover = pygame.mixer.Sound(constants.get_sfx(enums.SFXType.UI,enums.SFXActions.HOVER, enums.SFXName.BTN_HOVER))
+        self.sound_clicked = pygame.mixer.Sound(resources.get_ui_sfx(enums.SFXUI.BTN_CLICK))
+        self.sound_hover = pygame.mixer.Sound(resources.get_ui_sfx(enums.SFXUI.BTN_HOVER))
         
         
         if len(self.text) > 0:
@@ -45,7 +45,7 @@ class Button(pygame.sprite.Sprite):
         self.hovered = False
         
     def set_image(self, file_path: str):
-        self.image = pygame.image.load(file_path)
+        self.image = pygame.image.load(file_path).convert_alpha()
         if self.scale != 1:
             self.image = game_controller.scale_image(self.image, self.scale)
         self.start_image = self.image.copy()
@@ -56,6 +56,9 @@ class Button(pygame.sprite.Sprite):
         self.start_text = self.text_surface.copy()
         
     def enable(self, enabled: bool):
+        if self.enabled == enabled:
+            return
+        
         self.enabled = enabled
         self.default_enable()
     

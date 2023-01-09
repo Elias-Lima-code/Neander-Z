@@ -1,7 +1,7 @@
 import pygame
 from pygame.math import Vector2 as vec
 
-from domain.services import game_controller, menu_controller
+from domain.services import game_controller, menu_controller, resources
 from domain.utils import colors, constants, enums
 
 class StoreItem:
@@ -18,6 +18,8 @@ class StoreItem:
         self.player_money = kwargs.pop("player_money", 0)
         self.icon_path = icon_path
         self.bullet_type: enums.BulletType = kwargs.pop("bullet_type", None)
+        self.weapon_type: enums.Weapons = kwargs.pop("weapon_type", None)
+        self.owned = kwargs.pop("owned", False)
         
         #control
         self.selected = False
@@ -29,9 +31,10 @@ class StoreItem:
         self.on_click:function = kwargs.pop("on_click", self.default_on_click)
         self.on_blur: function = kwargs.pop("on_blur", self.default_on_blur)
         
-        self.icon = pygame.image.load(self.icon_path)
+        self.icon = pygame.image.load(self.icon_path).convert_alpha()
         _icon_ratio = self.rect.width / self.icon.get_width()
-        self.icon_scale = kwargs.pop("image_scale", _icon_ratio * 0.7)
+        self.icon_scale = _icon_ratio * 0.7 * kwargs.pop("icon_scale", 1)
+        self.store_icon_scale = kwargs.pop("store_icon_scale", 4)
         self.icon = game_controller.scale_image(self.icon, self.icon_scale)
         self.icon_rect = self.icon.get_rect()
         self.icon_rect.centerx = self.rect.centerx
@@ -48,11 +51,11 @@ class StoreItem:
         self.title_color = kwargs.pop("title_color", colors.WHITE)
         self.title_background_color = kwargs.pop("title_background_color", colors.set_alpha(colors.BLACK, 150))
         self.title_border_radius = kwargs.pop("title_border_radius", 10)
-        self.title_font = kwargs.pop("title_font", pygame.font.Font(constants.PIXEL_FONT, 24))
+        self.title_font = kwargs.pop("title_font", resources.px_font(24))
         
         
         self.price_color = kwargs.pop("price_color", colors.GREEN)
-        self.price_font = kwargs.pop("price_font", pygame.font.Font(constants.PIXEL_FONT, 18))
+        self.price_font = kwargs.pop("price_font", resources.px_font(18))
         
         self.card_selected_border_color = kwargs.pop("card_selected_border_color", colors.GREEN)
         self.selected_scale = kwargs.pop("selected_scale", 1.2)
@@ -80,7 +83,6 @@ class StoreItem:
     def default_on_click(self, card = None):
         if self.locked:
             return
-        # print('clicked ' + self.title)
         self.selected = True
         
         
@@ -142,8 +144,8 @@ class StoreItem:
         screen.blit(_icon, _icon_rect)
         
         #price
-        _price_color = colors.RED if self.player_money < self.price else self.price_color
-        price = menu_controller.get_text_surface(f'${self.price:.2f}', _price_color, self.price_font)
+        _price_color = colors.RED if self.player_money < self.price and not self.owned else self.price_color
+        price = menu_controller.get_text_surface(f'${self.price:.2f}' if not self.owned else "Purchased", _price_color, self.price_font)
         price_rect = price.get_rect()
         price_rect.centerx = _rect.centerx
         price_rect.bottom = _rect.bottom

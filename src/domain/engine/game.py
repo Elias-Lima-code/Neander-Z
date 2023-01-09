@@ -2,7 +2,7 @@ import pygame, time
 from datetime import datetime
 from pygame.math import Vector2 as vec
 
-from domain.services import game_controller, menu_controller
+from domain.services import game_controller, menu_controller as mc, resources
 from domain.utils import colors, enums, constants
 from domain.utils.math_utillity import sum_tuple_infix as t
 from domain.models.player import Player
@@ -16,7 +16,7 @@ from domain.models.ui.pages.modals.pause import Pause
 from domain.models.wave_result import WaveResult
 from domain.content.enemies.z_roger import ZRoger
 from domain.content.waves.wave_1 import Wave_1
-from domain.content.weapons.small_bullet import SmallBullet
+from domain.content.weapons.projectile import Projectile
 
 class Game(Page):
     def __init__(self, client_type: enums.ClientType, screen: pygame.Surface, **kwargs):
@@ -79,19 +79,26 @@ class Game(Page):
         self.focused = True
         
         
+        
+        
         #ui
         
-        self._money_icon = pygame.image.load(f'{constants.IMAGES_PATH}ui\\dollar.png')
-        self._ammo_icon = game_controller.scale_image(pygame.image.load(f'{constants.IMAGES_PATH}ui\\pistol_ammo_icon.png'), 3)
+        self._money_icon = pygame.image.load(f'{resources.IMAGES_PATH}ui\\dollar.png').convert_alpha()
+        self._pistol_ammo_icon = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\pistol_ammo_icon.png'), 3, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self._shotgun_ammo_icon = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\shotgun_ammo_icon.png'), 2.7, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self._rifle_ammo_icon = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\rifle_ammo_icon.png'), 3, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self._sniper_ammo_icon = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\sniper_ammo_icon.png'), 3, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self._rocket_ammo_icon = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\rocket_ammo_icon.png'), 3, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self._melee_ammo_icon = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\melee_ammo_icon.png'), 1.5, convert_type=enums.ConvertType.CONVERT_ALPHA)
         
         
-    
+        
     def setup(self):
         """Starts the game.
         """
         
         
-        self.map = Map(self.screen, constants.GRAVEYARD_MAP, floor_y = 50)
+        self.map = Map(self.screen, f"{resources.IMAGES_PATH}map_graveyard.png", floor_y = 50)
         self.map.rect.bottomleft = self.screen.get_rect().bottomleft
         game_controller.map_size = vec(self.map.rect.size)
         game_controller.screen_size = vec(self.screen.get_size())
@@ -108,15 +115,16 @@ class Game(Page):
         self.players_group =  pygame.sprite.Group([self.player])
         self.jumpable_group = pygame.sprite.Group([self.map.floor])
         self.bullets_group = pygame.sprite.Group()
+        
 
         self.reset_game()
         
-        # exec(recyclables.create_box)
         if self.client_type != enums.ClientType.SINGLE:
             self.jumpable_group.add(self.player2)
             
             
     def new_wave(self, wave):
+        self.pressed_keys.clear()
         self.wave_summary = None
         self.focused = True
         self.current_wave = wave
@@ -150,7 +158,7 @@ class Game(Page):
             p1_pos = (80, _y)
             p2_pos = (20, _y)
         
-        self.player.image = game_controller.scale_image(pygame.image.load(constants.get_character_frames(self.player.character, enums.AnimActions.IDLE)), self.player.image_scale)
+        self.player.image = game_controller.scale_image(pygame.image.load(resources.get_character_path(self.player.character, enums.AnimActions.IDLE)), self.player.image_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
         self.player.pos = vec(p1_pos)
         self.player.rect = self.player.image.get_rect()
         self.player.rect.topleft = self.player.pos
@@ -162,13 +170,12 @@ class Game(Page):
         self.player.health_bar.value = self.player.max_health
         self.player.health_bar.target_value = self.player.max_health
         self.player.score = 0
-        self.player.money = 0
-        self.player.backpack.pistol_ammo = 30
+        # self.player.money = 0
 
-        self.player.load_state(menu_controller.player_state)
+        self.player.load_state(mc.player_state)
         
         if self.client_type != enums.ClientType.SINGLE:
-            self.player2.image = game_controller.scale_image(pygame.image.load(constants.get_character_frames(self.player2.character, enums.AnimActions.IDLE)), self.player2.image_scale)
+            self.player2.image = game_controller.scale_image(pygame.image.load(resources.get_character_path(self.player2.character, enums.AnimActions.IDLE)), self.player2.image_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
             self.player2.pos = vec(p2_pos)
             self.player2.rect = self.player2.image.get_rect()
             self.player2.rect.topleft = self.player2.pos
@@ -181,7 +188,6 @@ class Game(Page):
             self.player2.health_bar.target_value = self.player2.max_health
             self.player2.score = 0        
             self.player2.money = 0
-            self.player2.backpack.pistol_ammo = 30
 
         
         
@@ -206,13 +212,27 @@ class Game(Page):
         
         self.wave_summary = WaveSummary((result[1], result[2] if self.client_type != enums.ClientType.SINGLE else None), start_time = datetime.now())
 
+    def get_ammo_icon(self, bullet_type: enums.BulletType):
+        match bullet_type:
+            case enums.BulletType.PISTOL:
+                return self._pistol_ammo_icon
+            case enums.BulletType.SHOTGUN:
+                return self._shotgun_ammo_icon
+            case enums.BulletType.ASSAULT_RIFLE:
+                return self._rifle_ammo_icon
+            case enums.BulletType.SNIPER:
+                return self._sniper_ammo_icon
+            case enums.BulletType.ROCKET:
+                return self._rocket_ammo_icon
+            case enums.BulletType.MELEE:
+                return self._melee_ammo_icon
     
     def draw_ui(self):
         
         _top_margin = 10
         _horizontal_margin = 10
         
-        _player_head = game_controller.scale_image(pygame.image.load(f'{constants.IMAGES_PATH}ui\\characters\\{self.player.character.value}\\head_icon.png'), 3)
+        _player_head = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\characters\\{self.player.character.value}\\head_icon.png'), 3, convert_type=enums.ConvertType.CONVERT_ALPHA)
         _head_rect = _player_head.get_rect()
         _head_rect.top = _top_margin
         _head_rect.left = _horizontal_margin
@@ -223,22 +243,18 @@ class Game(Page):
         _money_icon_rect.centery = _head_rect.centery
         _money_icon_rect.left = _health_rect.right + _horizontal_margin
 
-        _txt_money = menu_controller.get_text_surface(f"{self.player.money:.2f}", colors.WHITE, pygame.font.Font(constants.PIXEL_FONT, 25))
+        _txt_money = mc.get_text_surface(f"{self.player.money:.2f}", colors.WHITE, resources.px_font(25))
         _txt_money_rect = _txt_money.get_rect()
         _txt_money_rect.centery = _head_rect.centery
         _txt_money_rect.left = _money_icon_rect.right + _horizontal_margin
 
-        _txt_score = menu_controller.get_text_surface(f"Score: {self.player.score:.0f}", colors.WHITE, pygame.font.Font(constants.PIXEL_FONT, 25))
+        _txt_score = mc.get_text_surface(f"Score: {self.player.score:.0f}", colors.WHITE, resources.px_font(25))
         _txt_score_rect = _txt_score.get_rect()
         _txt_score_rect.centery = _head_rect.centery
         _txt_score_rect.left = _txt_money_rect.right + _horizontal_margin*2
         
-        _txt_fps = menu_controller.get_text_surface(f'fps: {menu_controller.clock.get_fps():.0f}', colors.LIGHT_GRAY, pygame.font.SysFont('calibri', 20))
-        _txt_fps_rect = _txt_fps.get_rect()
-        _txt_fps_rect.centery = _head_rect.centery
-        _txt_fps_rect.right = self.screen.get_width() - _horizontal_margin
-        
-        _ammo_icon_rect = self._ammo_icon.get_rect()
+        _ammo_icon = self.get_ammo_icon(self.player.current_weapon.bullet_type)
+        _ammo_icon_rect = _ammo_icon.get_rect()
         _ammo_icon_rect.bottom = self.screen.get_height() - _top_margin
         _ammo_icon_rect.left = _horizontal_margin
         
@@ -249,24 +265,29 @@ class Game(Page):
             _bullets_color = colors.WHITE
         else:
             _bullets_color = colors.YELLOW
-        _txt_ammo = menu_controller.get_text_surface(f'{self.player.current_weapon.magazine_bullets}', _bullets_color, pygame.font.Font(constants.PIXEL_FONT, 20))
-        _txt_ammo_rect = _txt_ammo.get_rect()
-        _txt_ammo_rect.centery = _ammo_icon_rect.centery
-        _txt_ammo_rect.left = _ammo_icon_rect.right + _horizontal_margin
         
-        _txt_total_ammo = menu_controller.get_text_surface(f'/ {self.player.backpack.get_ammo(self.player.current_weapon.bullet_type)}', colors.WHITE, pygame.font.Font(constants.PIXEL_FONT, 20))
-        _txt_total_ammo_rect = _txt_total_ammo.get_rect()
-        _txt_total_ammo_rect.centery = _ammo_icon_rect.centery
-        _txt_total_ammo_rect.left = _txt_ammo_rect.right + 2
+        if self.player.current_weapon.bullet_type != enums.BulletType.MELEE:
+            _txt_ammo = mc.get_text_surface(f'{self.player.current_weapon.magazine_bullets}', _bullets_color, resources.px_font(20))
+            _txt_ammo_rect = _txt_ammo.get_rect()
+            _txt_ammo_rect.centery = _ammo_icon_rect.centery
+            _txt_ammo_rect.left = _horizontal_margin + 40
+            
+            _txt_total_ammo = mc.get_text_surface(f'/ {self.player.backpack.get_ammo(self.player.current_weapon.bullet_type)}', colors.WHITE, resources.px_font(20))
+            _txt_total_ammo_rect = _txt_total_ammo.get_rect()
+            _txt_total_ammo_rect.centery = _ammo_icon_rect.centery
+            _txt_total_ammo_rect.left = _txt_ammo_rect.right + 2
+        
+        
         
         self.screen.blit(_player_head, _head_rect)
         self.screen.blit(self._money_icon, _money_icon_rect)
         self.screen.blit(_txt_money, _txt_money_rect) 
         self.screen.blit(_txt_score, _txt_score_rect)
-        self.screen.blit(_txt_fps, _txt_fps_rect)
-        self.screen.blit(self._ammo_icon, _ammo_icon_rect)
-        self.screen.blit(_txt_ammo, _txt_ammo_rect)
-        self.screen.blit(_txt_total_ammo, _txt_total_ammo_rect)
+        
+        self.screen.blit(_ammo_icon, _ammo_icon_rect)
+        if self.player.current_weapon.bullet_type != enums.BulletType.MELEE:
+            self.screen.blit(_txt_ammo, _txt_ammo_rect)
+            self.screen.blit(_txt_total_ammo, _txt_total_ammo_rect)
         
     
             
@@ -394,9 +415,9 @@ class Game(Page):
     
     def create_netdata_bullet(game, data: dict):
         b = None
-        match data["bullet_name"]:
-            case str(enums.Bullets.SMALL_BULLET.name):
-                b = SmallBullet(vec(0,0), 0, 0, 0, '', 0)
+        match data["bullet_type"]:
+            case str(enums.BulletType.PISTOL.name):
+                b = Projectile(vec(0,0), 0, 0, 0, '', 0)
                 b.load_netdata(data)
         
         if b != None:
@@ -414,8 +435,8 @@ class Game(Page):
         target.last_rect = target.rect.copy()
         
         target.acceleration.y = self.gravity_accelaration
-        target.speed.y += target.acceleration.y
-        target.pos.y += target.speed.y + 0.5 * target.acceleration.y
+        target.speed.y += target.acceleration.y * mc.dt
+        target.pos.y += (target.speed.y + 0.5 * target.acceleration.y) * mc.dt
     
     def process_gravitables(self):
         """Applies gravity to all gravitable objects (subclasses of IGravitable)"""        
@@ -491,11 +512,49 @@ class Game(Page):
             game_controller.restart_game(self)
         elif self.client_type == enums.ClientType.HOST:
             self.send_restart()
+            
+    def handle_shooting(self):
+        if "mouse_0" not in self.pressed_keys:
+            return
+        
+        _bullets = self.player.shoot()
+        
+        if _bullets == None:
+            return
+        
+
+        if type(_bullets) != list:
+            _bullets = [_bullets]
+        if len(_bullets) > 0:
+            for b in _bullets:
+                self.bullets_group.add(b)
+    
 
     def update(self, **kwargs):
         events = kwargs.pop("events", None)
         
         game_controller.handle_events(self, events)
+        
+        #input
+        if pygame.K_p in self.pressed_keys:
+            self.pause_screen.show()
+            self.pressed_keys.remove(pygame.K_p)
+        if pygame.K_ESCAPE in self.pressed_keys:
+            self.pause_screen.show()
+            self.pressed_keys.remove(pygame.K_ESCAPE)
+        if pygame.K_r in self.pressed_keys:
+            self.player.reload_weapon()
+            self.pressed_keys.remove(pygame.K_r)
+        if pygame.K_1 in self.pressed_keys:
+            self.player.change_weapon(0)
+            self.pressed_keys.remove(pygame.K_1)
+        if pygame.K_2 in self.pressed_keys:
+            self.player.change_weapon(1)
+            self.pressed_keys.remove(pygame.K_2)
+        if "wheel_1" in self.pressed_keys or "wheel_-1" in self.pressed_keys:
+            self.player.change_weapon()
+        
+        self.handle_shooting()
         
         if self.wave_summary != None:
             self.focused = False
@@ -508,10 +567,8 @@ class Game(Page):
         
         
         if not pygame.mixer.music.get_busy():
-            menu_controller.play_music(constants.get_music(enums.Music.WAVE_1), 0.1, -1)
+            mc.play_music(resources.get_song(resources.Songs.WAVE_1), 0.1, -1)
                 
-        if pygame.K_l in self.pressed_keys:
-            self.restart_game()
         # p1
         self.player.update(game = self)
         # p2
@@ -531,6 +588,11 @@ class Game(Page):
         
         self.center_camera()
         
+        if "wheel_1" in self.pressed_keys:
+            self.pressed_keys.remove("wheel_1")
+        if "wheel_-1" in self.pressed_keys:
+            self.pressed_keys.remove("wheel_-1")
+        
         #debug
         if pygame.K_UP in self.pressed_keys:
             self.player.get_health(20)
@@ -541,16 +603,8 @@ class Game(Page):
         if pygame.K_DELETE in self.pressed_keys:
             self.current_wave.kill_all()
             self.pressed_keys.remove(pygame.K_DELETE)
-        if pygame.K_r in self.pressed_keys:
-            self.player.reload_weapon()
-            self.pressed_keys.remove(pygame.K_r)
-        if pygame.K_p in self.pressed_keys:
-            self.pause_screen.show()
-            self.pressed_keys.remove(pygame.K_p)
-        if pygame.K_ESCAPE in self.pressed_keys:
-            self.pause_screen.show()
-            self.pressed_keys.remove(pygame.K_ESCAPE)
-        
+        if pygame.K_l in self.pressed_keys:
+            self.restart_game()
 
         if self.player.pos.y > self.map.rect.height:
             self.player.pos.y = 0
@@ -578,15 +632,15 @@ class Game(Page):
         
         # Wave
         self.current_wave.draw(self.screen, self.player.offset_camera)
+        # bullets
+        for b in self.bullets_group:
+            b.draw(self.screen, self.player.offset_camera)
         # P1
         self.player.draw(self.screen, self.player.offset_camera)
         # P2
         if self.client_type != enums.ClientType.SINGLE:
             self.player2.draw(self.screen, self.player.offset_camera)
             
-        # bullets
-        for b in self.bullets_group:
-            b.draw(self.screen, self.player.offset_camera)
             
         # self.blit_debug()
         

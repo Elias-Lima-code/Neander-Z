@@ -14,16 +14,26 @@ Jumps Sound Effect from <a href="https://pixabay.com/?utm_source=link-attributio
 
 Button click Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=97915">Pixabay</a>
 
-1911 Empty firing Sound Effect from <a href="https://www.storyblocks.com/audio/stock/gun-staple-gun-empty-firing-rxhqlqa3ivrk0wxwv17.html"> </a>
+Empty firing https://www.storyblocks.com/audio/stock/gun-staple-gun-empty-firing-rxhqlqa3ivrk0wxwv17.html
 
-1911 Empty clip Sound Effect from<a href="https://www.storyblocks.com/audio/stock/staple-gun-load-empty-clip-rgbz2222lwhk0wxupnw.html"> </a>
+Empty clip https://www.storyblocks.com/audio/stock/staple-gun-load-empty-clip-rgbz2222lwhk0wxupnw.html
 
-ScrollBar template: <a href="https://github.com/edward344/scrollbar"> </a>
+ScrollBar template: https://github.com/edward344/scrollbar
 
 Shotgun firing Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=39753">Pixabay</a>
 Shotgun pump Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=81021">Pixabay</a>
 Shotgun shell load Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=6464">Pixabay</a>
 
-Uzi firing Sound Effect from <a href="https://www.videvo.net/sound-effect/uzi-rapid-fire-burst-pe1106507/260610/"> </a>
-Uzi clip Sound Effect from <a href="https://www.videvo.net/sound-effect/gun-machine-gun-foley-21/424898/"> </a>
-Uzi reload Sound Effect from <a href="https://www.fesliyanstudios.com/royalty-free-sound-effects-download/gun-reloading-302"> </a>
+Uzi shoot echo Sound Effect from <a href="https://pixabay.com/sound-effects/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=6349">Pixabay</a>
+
+RPG explosion Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=6288">Pixabay</a>
+
+RPG reload 01 Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=7132">Pixabay</a>
+
+Sniper shoot Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=39789">Pixabay</a>
+
+Sniper bolt action Sound Effect from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=71670">Pixabay</a>
+
+Machete Sound Effect from <a href="https://pixabay.com/sound-effects/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=7174">Pixabay</a>
+
+Machete slash collider Sound Effect from <a href="https://pixabay.com/sound-effects/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=36354">Pixabay</a>

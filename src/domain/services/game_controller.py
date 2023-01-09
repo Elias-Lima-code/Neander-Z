@@ -4,7 +4,7 @@ import math
 import os
 
 from domain.utils import constants, enums
-from domain.services import menu_controller
+from domain.services import menu_controller, resources
 
 screen_size: vec = vec(0,0)
 map_size: vec = vec(0,0)
@@ -39,13 +39,19 @@ def handle_events(game, events: list[pygame.event.Event]):
         if event.type == pygame.QUIT:
              menu_controller.quit_app()
         elif event.type == pygame.MOUSEBUTTONDOWN and pygame.mouse.get_pressed()[0] and game.focused:
-            _bullets = game.player.shoot()
-            if _bullets != None:
-                if type(_bullets) != list:
-                    _bullets = [_bullets]
-                if len(_bullets) > 0:
-                    for b in _bullets:
-                        game.bullets_group.add(b)
+            game.pressed_keys.append("mouse_0")
+            
+        elif event.type == pygame.MOUSEBUTTONUP and not pygame.mouse.get_pressed()[0]:
+            if "mouse_0" in game.pressed_keys:
+                game.pressed_keys.remove("mouse_0")
+                
+        elif event.type == pygame.MOUSEWHEEL and event.y != 0:
+            if f"wheel_{event.y}" not in game.pressed_keys:
+                game.pressed_keys.append(f"wheel_{1 if event.y > 0 else -1}")
+                
+        
+        
+                
         elif event.type == pygame.KEYDOWN and game.focused:
             handle_keydown(event.key, game)
         elif event.type == pygame.KEYUP and game.focused:
@@ -86,7 +92,26 @@ def restart_game(game):
     game.map.rect.left = 0
     game.reset_game()
     
-def load_sprites(folder_path: str, scale = 1):
+def load_sounds(folder_path: str, volume: int = 1):
+    """Loads all mp3 files from the specified folter into a list of mixer.Sound.
+
+    Args:
+        folder_path (str): The path to the folder containing the images.
+
+    Returns:
+        list[mixer.Sound]: A list of the sounds.
+    """    
+    _path = resources.ROOT_PATH + folder_path
+    if not os.path.exists(_path):
+        return
+    
+    sounds = [pygame.mixer.Sound(_path + "\\" + img) for img in os.listdir(_path) if img.endswith('.mp3')]
+    if volume != 1:
+        for s in sounds:
+            s.set_volume(volume)
+    return sounds
+    
+def load_sprites(folder_path: str, scale = 1, convert_type: enums.ConvertType = enums.ConvertType.CONVERT):
     """Loads all png files from the specified folter into a list of pygame.Surface.
 
     Args:
@@ -95,7 +120,7 @@ def load_sprites(folder_path: str, scale = 1):
     Returns:
         list[pygame.Surface]: A list of the images.
     """    
-    _path = constants.ROOT_PATH + folder_path
+    _path = resources.ROOT_PATH + folder_path
     if not os.path.exists(_path):
         return
     
@@ -104,9 +129,15 @@ def load_sprites(folder_path: str, scale = 1):
     else:
         images = [pygame.image.load(_path + "\\" + img) for img in os.listdir(_path) if img.endswith('.png')]
     
-    return images
+    match convert_type:
+        case enums.ConvertType.CONVERT:
+            return [x.convert() for x in images]
+        case enums.ConvertType.CONVERT_ALPHA:
+            return [x.convert_alpha() for x in images]
+        case _:
+            return images
     
-def scale_image(image: pygame.Surface, scale: float):
+def scale_image(image: pygame.Surface, scale: float, convert_type: enums.ConvertType = enums.ConvertType.NO_CONVERT):
     """Scales a image to the given float size.
 
     Args:
@@ -117,7 +148,14 @@ def scale_image(image: pygame.Surface, scale: float):
         pygame.Surface: The scaled image.
     """    
     img = pygame.transform.scale(image, (image.get_width() * scale, image.get_height() * scale))
-    return img
+    
+    match convert_type:
+        case enums.ConvertType.CONVERT:
+            return img.convert()
+        case enums.ConvertType.CONVERT_ALPHA:
+            return img.convert_alpha()
+        case _:
+            return img
 
 def angle_to_mouse(pos: vec, mouse_pos: vec):
     rel_x, rel_y = mouse_pos.x - pos.x, mouse_pos.y - pos.y
@@ -136,7 +174,7 @@ def point_to_angle_distance(pos: vec,distance: float, angle_in_radians: float):
     x = pos.x + (distance*math.cos(angle_in_radians))
     y = pos.y + (distance*math.sin(angle_in_radians))
     return vec(x, y)
-    
+
 def host_game(game, host: str, port: int):
     """Creates a server on the specified address and port.
 

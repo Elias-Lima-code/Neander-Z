@@ -14,6 +14,9 @@ class ClientType(Enum):
     def __int__(self):
         return self.value
     
+class Environment(Enum):
+    DEV = 1
+    RELEASE = 2
     
 class Orientation(Enum):
     VERTICAL = 0
@@ -25,25 +28,35 @@ class Characters(Enum):
     
 class Enemies(Enum):
     Z_ROGER = "z_roger"
-
-class Bullets(Enum):
-    SMALL_BULLET = "small_bullet"
     
 class Weapons(Enum):
     P_1911 = 'pistols\\1911'
     SHORT_BARREL = 'shotguns\\short_barrel'
+    UZI = 'smgs\\uzi'
+    MACHETE = 'melee\\machete'
+    RPG = 'launchers\\rpg'
+    SV98 = 'snipers\\sv98'
     
 class AnimActions(Enum):
+    #players/enemies
     TURN = "turn"
     JUMP = "jump"
     RUN = "run"
+    FALL_GROUND = "fall_ground"
+    DEATH = "death"
+    ATTACK = "attack"
+    
+    #weapons
     RELOAD = "reload"
+    RELOAD_END = "reload_end"
     PUMP = "pump"
     SHOOT = "shoot"
-    FALL_GROUND = "fall_ground"
+    HIT = "hit"
+    EMPTY_TRIGGER = "empty"
+
+    #others
     IDLE = "idle"
-    ATTACK = "attack"
-    DEATH = "death"
+    ICON = "icon"
     
 class Command(Enum):
     RESTART_GAME = 1
@@ -56,47 +69,46 @@ class Command(Enum):
     def __int__(self):
         return self.value
 
-class Music(Enum):
-    MUSIC_MENU = "menu_caves_of_dawn.mp3"
-    WAVE_1 = "wave1_mysterious_celesta.mp3"
+
 
 class SFXType(Enum):
     UI = "ui"
     WEAPONS = "weapons"
-    SFX_PLAYER = "sfx_player"
+    PLAYERS = "players"
+    ENEMIES = "enemies"
 
-class SFXActions(Enum):
-    SHOOT = "shoot"
-    PUMP = "pump"
-    RELOAD = "reload"
-    CLICKED = "clicked"
-    JUMP = "jump"
-    HOVER = "hover"
-    EMPTY_M = "empty"
-
-class SFXName(Enum):
-    P_1911 = "1911.mp3"
-    #shoot
-    SHORT_BARREL = "short_barrel.mp3"
-    PUMP_SHORT_BARREL = "pump_short_barrel.mp3"
-    
-    #reload
-    START_RELOAD_1911 = "start_reload_1911.mp3"
-    END_RELOAD_1911 = "end_reload_1911.mp3"
-    SHELL_LOAD_SHORT_BARREL = "shell_load_short_barrel.mp3"
-    
-    #others
-    EMPTY_1911 = "empty_1911.mp3"
+class SFXUI(Enum):
     BTN_CLICK = "btn_click.mp3"
     BTN_HOVER = "btn_hover.mp3"
+    STORE_PURCHASE = "purchase.mp3"
     
 class BulletType(Enum):
-    PISTOL = 1
-    SHOTGUN = 2
-    ASSAULT_RIFLE = 3
-    SNIPER = 4
-    ROCKET = 5
-    GRENADE = 6
+    MELEE = "melee"
+    PISTOL = "pistol"
+    SHOTGUN = "shotgun"
+    ASSAULT_RIFLE = "rifle"
+    SNIPER = "sniper"
+    ROCKET = "rocket"
+    GRENADE = "grenade"
+    
+class FireMode(Enum):
+    MELEE = 0
+    SEMI_AUTO = 1
+    BURST = 2
+    FULL_AUTO = 3
+    PUMP_ACTION = 4
+    BOLT_ACTION = 5
+    SINGLE_SHOT = 6
+    
+class ReloadType(Enum):
+    NO_RELOAD = 0
+    MAGAZINE = 1
+    SINGLE_BULLET = 2
+    
+class ConvertType(Enum):
+    NO_CONVERT = 0
+    CONVERT = 1
+    CONVERT_ALPHA = 2
     
 
 

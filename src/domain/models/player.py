@@ -1,17 +1,20 @@
-import pygame, math as maths, random 
+import pygame, math as maths, datetime
 
 from pygame.math import Vector2 as vec
 
-
 from domain.utils import colors, constants, enums, math_utillity as math
-from domain.services import game_controller, menu_controller
+from domain.services import game_controller, menu_controller as mc, resources
+from domain.content.weapons.semi_auto import SemiAuto
 from domain.content.weapons.shotgun import Shotgun
+from domain.content.weapons.full_auto import FullAuto
+from domain.content.weapons.melee import Melee
+from domain.content.weapons.launcher import Launcher
+from domain.content.weapons.sniper import Sniper
+from domain.models.weapon import Weapon
 from domain.models.progress_bar import ProgressBar
+from domain.models.rectangle_sprite import Rectangle
 from domain.models.backpack import BackPack
 from domain.models.ui.popup_text import Popup
-
-
-
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, character: enums.Characters, **kwargs):
@@ -32,7 +35,7 @@ class Player(pygame.sprite.Sprite):
         self.score = 0
         """The amount of points of the player""" 
 
-        self.money = 0
+        self.money = 1500
         """The amount of money of the player""" 
         
         self.name = kwargs.pop("name", "player")
@@ -49,7 +52,7 @@ class Player(pygame.sprite.Sprite):
         self.image_scale = 2
         """How much the image will be scaled from original file."""
         
-        self.image = game_controller.scale_image(pygame.image.load(constants.get_character_frames(self.character, enums.AnimActions.IDLE)), self.image_scale).convert()
+        self.image = game_controller.scale_image(pygame.image.load(resources.get_character_path(self.character, enums.AnimActions.IDLE)), self.image_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
         """The surface of the player."""
         	
         self.rect = self.image.get_rect()
@@ -69,23 +72,29 @@ class Player(pygame.sprite.Sprite):
         
         self.backpack = BackPack()
         
-        self.current_weapon = Shotgun((self.rect.width, self.rect.centery), weapon_anchor = vec(self.rect.width/2, self.rect.height/3), backpack = self.backpack, start_ammo = self.backpack.pistol_ammo)
+        self.current_weapon: Weapon = None
         """The weapon on player's hand."""
+
+        self.add_weapon(enums.Weapons.SV98)
+        
+        self.weapon_switch_ms = 300
+        """Time in milliseconds to wait since last weapon switch to be able to switch again."""
+        self.last_weapon_switch: datetime.datetime = datetime.datetime.now()
         
         self.turning_dir = 0
         """The directino that tha player is turning to (left: -1, right: 1)."""
         self.turning_frame = 0
         """The current frame index of the turning animation."""
-        turn_folder = constants.get_character_frames(self.character, enums.AnimActions.TURN)
-        self.turn_frames = game_controller.load_sprites(turn_folder)
+        turn_folder = resources.get_character_path(self.character, enums.AnimActions.TURN)
+        self.turn_frames = game_controller.load_sprites(turn_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
         """The frames of the turning animation."""
         
         self.jumping = False
         """If the jumping animation is running."""
         self.jumping_frame = 0
         """The current frame index of the jumping animation."""
-        jump_folder = constants.get_character_frames(self.character, enums.AnimActions.JUMP)
-        self.jump_frames = game_controller.load_sprites(jump_folder)
+        jump_folder = resources.get_character_path(self.character, enums.AnimActions.JUMP)
+        self.jump_frames = game_controller.load_sprites(jump_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
         """The frames of the jumping animation."""
         self.jump_frames.append(self.jump_frames[-1])
         
@@ -93,26 +102,31 @@ class Player(pygame.sprite.Sprite):
         """If the running animation is running."""
         self.running_frame = 0
         """The current frame index of the running animation."""
-        run_folder = constants.get_character_frames(self.character, enums.AnimActions.RUN)
-        self.run_frames = game_controller.load_sprites(run_folder)
+        run_folder = resources.get_character_path(self.character, enums.AnimActions.RUN)
+        self.run_frames = game_controller.load_sprites(run_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
         """The frames of the running animation."""
         
         self.falling_ground = False
         """If the falling ground animation is running."""
         self.falling_ground_frame = 0
         """The current frame index of the falling ground animation."""
-        fall_ground_folder = constants.get_character_frames(self.character, enums.AnimActions.FALL_GROUND)
-        self.fall_ground_frames = game_controller.load_sprites(fall_ground_folder)
+        fall_ground_folder = resources.get_character_path(self.character, enums.AnimActions.FALL_GROUND)
+        self.fall_ground_frames = game_controller.load_sprites(fall_ground_folder, convert_type=enums.ConvertType.CONVERT_ALPHA)
         """The frames of the falling ground animation."""
         
         self.health_bar: ProgressBar = None
         """The health bar of the player."""
         
+        _feet_rect = self.rect.copy()
+        _feet_rect.width *= 0.3
+        _feet_rect.height = self.rect.height
+        self.feet_collider = Rectangle(_feet_rect.size, _feet_rect.topleft)
+        
         self.player2_offset = vec(0,0)
         
         self.is_player1 = self.name == "P1"
-        self.jump_sounds = pygame.mixer.Sound( f'{constants.SOUNDS_PATH}sound_effects\\sfx_player\\jump\\{self.character.value}\\jump.mp3')
-        self.fall_sound = pygame.mixer.Sound( f'{constants.SOUNDS_PATH}sound_effects\\sfx_player\\fall_ground\\{self.character.value}\\fall_ground.mp3')
+        self.jump_sounds = pygame.mixer.Sound(resources.get_player_sfx(self.character, enums.AnimActions.JUMP))
+        self.fall_sound = pygame.mixer.Sound(resources.get_player_sfx(self.character, enums.AnimActions.FALL_GROUND))
 
         self.reload_popup: Popup = None
         
@@ -121,9 +135,37 @@ class Player(pygame.sprite.Sprite):
         else:
             self.health_bar = ProgressBar(self.health, pygame.Rect((self.rect.left, self.rect.top), (self.rect.width * 1.3, 8)), border_width = 1)
     
+    def change_weapon(self, slot: int = None):
+        _now = datetime.datetime.now()
+        if self.last_weapon_switch + datetime.timedelta(milliseconds=self.weapon_switch_ms) > _now:
+            return False
+        
+        
+        self.last_weapon_switch = _now
+        
+        if slot == None:
+            slot = 1 if self.current_weapon.is_primary else 0
+            
+        match slot:
+            case 0:
+                w = self.backpack.get_weapon(self.backpack.equipped_primary)
+                if w:
+                    self.current_weapon = w
+                    return True
+            case 1:
+                w = self.backpack.get_weapon(self.backpack.equipped_secondary)
+                if w:
+                    self.current_weapon = w
+                    return True
+        
+        return False
     
     def update_rect(self):
         self.rect.topleft = (self.pos.x, self.pos.y)
+        
+    def update_feet(self):
+        self.feet_collider.rect.centerx = self.rect.centerx
+        self.feet_collider.rect.bottom = self.rect.bottom + 5
         
     def load_state(self, state: dict):
         self.character = state["character"]
@@ -176,10 +218,8 @@ class Player(pygame.sprite.Sprite):
         if self.is_player1 and game.focused:
             self.current_weapon.weapon_aim_angle = game_controller.angle_to_mouse(_weapon_center, _mouse_target)
         
-        # The distance from the weapon anchor to position the weapon
-        _weapon_distance = self.rect.width/2 + 30
         # Weapon pos
-        self.current_weapon.rect.center = game_controller.point_to_angle_distance(_weapon_center, _weapon_distance, -maths.radians(self.current_weapon.weapon_aim_angle)) + self.current_weapon.barrel_offset
+        self.current_weapon.rect.center = game_controller.point_to_angle_distance(_weapon_center, self.current_weapon.weapon_distance, -maths.radians(self.current_weapon.weapon_aim_angle)) + self.current_weapon.barrel_offset
         # Weapon rotation
         self.current_weapon.image, self.current_weapon.rect = game_controller.rotate_to_angle(self.current_weapon.current_frame, vec(self.current_weapon.rect.center),self.current_weapon.weapon_aim_angle)
         
@@ -188,13 +228,13 @@ class Player(pygame.sprite.Sprite):
         #region Animation Triggers
         
         if self.turning_dir != 0:
-            self.turn_anim(0.3)
+            self.turn_anim(0.3 * mc.dt)
         if self.falling_ground:
-            self.fall_ground_anim(0.2)
+            self.fall_ground_anim(0.2 * mc.dt)
         if self.running:
-            self.run_anim(abs(self.speed.x / 26.4))
+            self.run_anim(abs(self.speed.x / 26.4) * mc.dt)
         if self.jumping:
-            self.jump_anim(0.2)
+            self.jump_anim(0.2 * mc.dt)
             
         #endregion Animation Triggers
         
@@ -205,13 +245,13 @@ class Player(pygame.sprite.Sprite):
         surface.blit(self.image, self.pos - offset)
         _target_offset = offset if not self.is_player1 else vec(0,0)
         
-        surface.blit(self.current_weapon.image, vec(self.current_weapon.rect.topleft) - _target_offset)
-
+        self.current_weapon.draw(surface, offset)
+        
         #popup
         if self.current_weapon.magazine_bullets == 0:
             if self.reload_popup == None:
                 self.reload_popup = Popup("Reload: R", vec(self.rect.centerx, self.rect.top - 50) - _target_offset, name="Reload: R", unique= True, **constants.POPUPS["blink"])
-                menu_controller.popup(self.reload_popup)
+                mc.popup(self.reload_popup)
             else:
                 self.reload_popup.rect.centerx = self.rect.centerx - self.offset_camera.x
                 self.reload_popup.rect.bottom = self.rect.top - 10 - self.offset_camera.y
@@ -223,6 +263,8 @@ class Player(pygame.sprite.Sprite):
         
         if not self.is_player1:
             self.health_bar.draw(surface, _target_offset)
+            
+        # pygame.draw.rect(surface, colors.BLUE, math.rect_offset(self.feet_collider.rect, -offset), 3)
         
     
     def movement(self, game):
@@ -280,18 +322,19 @@ class Player(pygame.sprite.Sprite):
             
         # Movement
         self.acceleration.x += self.speed.x * game.friction
-        self.speed.x += self.acceleration.x
-        self.pos.x += self.speed.x + 0.5 * self.acceleration.x
+        self.speed.x += self.acceleration.x * mc.dt
+        self.pos.x += (self.speed.x + 0.5 * self.acceleration.x) * mc.dt
         
         # Gravity
         game.apply_gravity(self)
         self.update_rect()
+        self.update_feet()
+        
         
         # jump
         _was_grounded = self.grounded
-        _old_pos = self.pos.y
-        self.grounded = self.collision(game, game.jumpable_group, enums.Orientation.VERTICAL)
-        if not _was_grounded and self.grounded and abs(_old_pos - self.pos.y) > 2 :
+        self.grounded = self.collision(game, game.jumpable_group, enums.Orientation.VERTICAL, self.feet_collider)
+        if not _was_grounded and self.grounded:
             self.jumping = False
             self.falling_ground = True
             self.fall_sound.play()
@@ -311,24 +354,27 @@ class Player(pygame.sprite.Sprite):
     
         # solid collision
         self.collision(game, game.collision_group, enums.Orientation.HORIZONTAL)
+        self.update_feet()
         
-    def collision(self, game, targets: pygame.sprite.Group, direction: enums.Orientation):
+    def collision(self, game, targets: pygame.sprite.Group, direction: enums.Orientation, obj = None):
         """Handles collision between the player and collidable objects.
 
         Args:
             targets (pygame.sprite.Group | list[pygame.sprite.Sprite])
             direction (enums.Orientation): The direction that the player was moving.
         """
-        collision_objs = pygame.sprite.spritecollide(self, targets, False)
+        if obj == None:
+            obj = self
+        collision_objs = pygame.sprite.spritecollide(obj, targets, False)
         if collision_objs:
             game.collision(self, collision_objs, direction)
             return True
         return False    
     
         
-    def shoot(self):
+    def shoot(self, **kwargs):
         _bullet_pos = game_controller.point_to_angle_distance(self.current_weapon.weapon_anchor + self.rect.topleft + vec(0,self.current_weapon.bullet_spawn_offset.y), self.current_weapon.bullet_spawn_offset.x, -maths.radians(self.current_weapon.weapon_aim_angle))
-        return self.current_weapon.shoot(_bullet_pos, self.net_id)
+        return self.current_weapon.shoot(_bullet_pos, self.net_id, **kwargs)
     
     def reload_weapon(self):
         return self.current_weapon.reload()
@@ -369,7 +415,7 @@ class Player(pygame.sprite.Sprite):
         if self.running_frame > len(self.run_frames):
             self.running_frame = 0
         self.image = game_controller.scale_image(self.run_frames[int(self.running_frame)], self.image_scale)
-        if self.acceleration.x > 0:
+        if self.speed.x > 0:
             self.image = pygame.transform.flip(self.image, True, False)
         
     def take_damage(self, value: float):
@@ -380,9 +426,9 @@ class Player(pygame.sprite.Sprite):
         
         
         if self.is_player1:
-            menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera, **constants.POPUPS["damage"]))
+            mc.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera, **constants.POPUPS["damage"]))
         else:
-            menu_controller.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera - self.player2_offset, **constants.POPUPS["damage"]))
+            mc.popup(Popup(f'-{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera - self.player2_offset, **constants.POPUPS["damage"]))
         
         
     def get_health(self, value: float):
@@ -390,4 +436,45 @@ class Player(pygame.sprite.Sprite):
             return
         self.health = math.clamp(self.health + value, 0, self.health_bar.max_value)
         self.health_bar.add_value(value)
-        menu_controller.popup(Popup(f'+{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera - self.player2_offset, **constants.POPUPS["health"]))
+        mc.popup(Popup(f'+{value}', self.pos + vec(self.rect.width / 2 - 20,-30) - self.offset_camera - self.player2_offset, **constants.POPUPS["health"]))
+
+    def add_weapon(self, weapon_type: enums.Weapons, equip = True):
+        if self.backpack.get_weapon(weapon_type) != None:
+            return False
+        
+        
+        weapon = None
+        
+        default_weapon_distance = self.rect.width/2 + 30
+        default_weapon_anchor = vec(self.rect.width/2, self.rect.height/3)
+        
+        match weapon_type:
+            case enums.Weapons.P_1911:
+                weapon = SemiAuto((self.rect.width, self.rect.centery), weapon_anchor = default_weapon_anchor, weapon_distance = default_weapon_distance, backpack = self.backpack)
+            case enums.Weapons.SHORT_BARREL:
+                weapon = Shotgun((self.rect.width, self.rect.centery), weapon_anchor = default_weapon_anchor, weapon_distance = default_weapon_distance, backpack = self.backpack)
+            case enums.Weapons.UZI:
+                weapon = FullAuto((self.rect.width, self.rect.centery), weapon_anchor = default_weapon_anchor, weapon_distance = default_weapon_distance, backpack = self.backpack)
+            case enums.Weapons.MACHETE:
+                weapon = Melee((self.rect.width, self.rect.centery), weapon_anchor = default_weapon_anchor, weapon_distance = self.rect.width/2 + 20, backpack = self.backpack)
+            case enums.Weapons.RPG:
+                weapon = Launcher((self.rect.width, self.rect.centery), weapon_anchor = default_weapon_anchor, weapon_distance = self.rect.width/2 + 20, backpack = self.backpack)
+            case enums.Weapons.SV98:
+                weapon = Sniper((self.rect.width, self.rect.centery), weapon_anchor = default_weapon_anchor, weapon_distance = self.rect.width/2 + 20, backpack = self.backpack)
+                
+        if weapon == None:
+            return False
+        
+        if weapon.is_primary:
+            self.backpack.primary_weapons.append(weapon)
+        else:
+            self.backpack.secondary_weapons.append(weapon)
+            
+        if equip:
+            self.backpack.equip_weapon(weapon_type)
+            if weapon.is_primary:
+                self.current_weapon = self.backpack.get_weapon(self.backpack.equipped_primary)
+            else:
+                self.current_weapon = self.backpack.get_weapon(self.backpack.equipped_secondary)
+        
+        return True
