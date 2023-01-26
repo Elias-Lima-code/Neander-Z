@@ -2,66 +2,36 @@ import pygame, math, datetime, random
 from pygame.math import Vector2 as vec
 
 from domain.models.weapon import Weapon
-from domain.utils import constants, enums
+from domain.utils import enums
 from domain.content.weapons.projectile import Projectile
 from domain.services import game_controller, menu_controller as mc, resources
 
 class Sniper(Weapon):
     def __init__(self, pos, **kwargs):
-        
-        kwargs["bullet_type"] = enums.BulletType.SNIPER
-        kwargs["weapon_type"] = enums.Weapons.SV98
-        kwargs["is_primary"] = True
         super().__init__(pos, **kwargs)
         
-        self.damage = 30
-        self.bullet_speed = 35
-        self.fire_rate = 1
-        self.reload_delay_ms = 1500
-        self.last_shot_time = None
-        self.magazine_size = 10
-        self.magazine_bullets = self.magazine_size
-        self.bullet_max_range = 1000
-        self.bullet_min_range = 800
-        self.fire_mode = enums.FireMode.BOLT_ACTION
-        self.reload_type = enums.ReloadType.MAGAZINE
-        self.pierce_damage_multiplier = 0.5
-        self.max_pierce_targets = 5
-        
-        self.bullet_spawn_offset = vec(self.rect.width/2 + 45, 5)
-        
-        _scale = 1.1
-        self.fire_frames = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.SV98, enums.AnimActions.SHOOT), _scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.reload_frames = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.SV98, enums.AnimActions.RELOAD), _scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.pump_frames = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.SV98, enums.AnimActions.PUMP), _scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        
-        self.reload_end_frame = 17
-        self.playing_reload_end = False
-        
-        self.idle_frame = self.fire_frames[0]
-        self.image = self.idle_frame
-        self.current_frame = self.idle_frame
-        
-        self.barrel_offset = vec(10, -5)
-        self.start_barrel_offset = self.barrel_offset.copy()
+        self.pierce_damage_multiplier = kwargs.pop("pierce_damage_multiplier", 1)
+        self.max_pierce_targets = kwargs.pop("max_pierce_targets", 1)
         
         load_content = kwargs.pop("load_content", True)
         
         if not load_content:
             return
         
-        self.shoot_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.SV98,enums.AnimActions.SHOOT))
-        self.empty_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.SV98,enums.AnimActions.EMPTY_TRIGGER))
-        self.pump_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.SV98,enums.AnimActions.PUMP))
-        self.reload_start_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.SV98,enums.AnimActions.RELOAD))
-        self.reload_end_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.SV98,enums.AnimActions.RELOAD_END))
-   
-        self.shoot_sound.set_volume(0.5)
-        self.pump_sound.set_volume(0.5)
-        self.empty_sound.set_volume(0.1)
-        self.reload_start_sound.set_volume(0.3)
-        self.reload_end_sound.set_volume(0.3)
+        self.fire_frames = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.SHOOT), self.weapon_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self.reload_frames = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.RELOAD), self.weapon_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self.pump_frames = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.PUMP), self.weapon_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
         
+        self.playing_reload_end = False
+        
+        self.start_barrel_offset = self.barrel_offset.copy()
+        
+        self.shoot_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.SHOOT))
+        self.empty_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.EMPTY_TRIGGER))
+        self.pump_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.PUMP))
+        self.reload_start_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.RELOAD))
+        self.reload_end_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.RELOAD_END))
+   
         self.pumping = False
         self.pumping_frame = 0
         
@@ -70,7 +40,7 @@ class Sniper(Weapon):
         
         super().update(**kwargs)
         
-        speed = ((1000/self.reload_delay_ms) / len(self.reload_frames)*9)
+        speed = ((1000/self.reload_delay_ms) / len(self.reload_frames)* self.reload_speed_multiplier)
         
         if self.firing:
             self.firing = self.fire_anim(self.fire_rate/5 * mc.dt)
@@ -88,7 +58,7 @@ class Sniper(Weapon):
         self.last_shot_time = datetime.datetime.now()
         self.shoot_sound.play()
         
-        return Projectile(bullet_pos, self.weapon_aim_angle, self.bullet_speed, self.damage, player_net_id, game_controller.get_bullet_id(), max_range = self.bullet_max_range, min_range = self.bullet_min_range, bullet_type = self.bullet_type, pierce_damage_multiplier = self.pierce_damage_multiplier, max_pierce_targets = self.max_pierce_targets)
+        return Projectile(bullet_pos, self.weapon_aim_angle, self.bullet_speed, self.damage, player_net_id, game_controller.get_bullet_id(), max_range = self.bullet_max_range, min_range = self.bullet_min_range, bullet_type = self.bullet_type, pierce_damage_multiplier = self.pierce_damage_multiplier, max_pierce_targets = self.max_pierce_targets, kill_callback = self.bullet_kill_callback)
     
 
     

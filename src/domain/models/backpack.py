@@ -2,38 +2,40 @@ from domain.utils import enums
 
 class BackPack:
     def __init__(self):
+        
+        self.upgrade_step: int = 0
+        """Upgrades that the player bought for the backpack."""
+        
         self.max_pistol_ammo = 50
         self.max_shotgun_ammo = 20
         self.max_rifle_ammo = 90
         self.max_sniper_ammo = 15
         self.max_rocket_ammo = 5
         
-        self.pistol_ammo = 300
-        self.shotgun_ammo = 30
+        self.pistol_ammo = 0 
+        self.shotgun_ammo = 0
         self.rifle_ammo = 0
-        self.sniper_ammo = 50
-        self.rocket_ammo = 15
+        self.sniper_ammo = 0
+        self.rocket_ammo = 0
         
-        
-        
-        
+        self.throwables = []
         
         self.primary_weapons = [
         ]
         self.secondary_weapons = [
         ]
         self.equipped_primary = None
-        self.equipped_secondary = enums.Weapons.MACHETE
+        self.equipped_secondary = None
         
         
         
-    def equip_weapon(self, weapon: enums.Weapons):
+    def equip_weapon(self, weapon: enums.Weapons, as_primary = False):
         w = self.get_weapon(weapon)
         
         if not w:
             return
         
-        if w.is_primary:
+        if w.is_primary or as_primary:
             self.equipped_primary = w.weapon_type
         else:
             self.equipped_secondary = w.weapon_type
@@ -50,6 +52,15 @@ class BackPack:
             return prim[0]
         if sec:
             return sec[0]
+        
+    
+    def get_throwable(self, throwable_type: enums.Throwables):
+        throwable = [t for t in self.throwables if t.weapon_type == throwable_type]
+        
+        if len(throwable) == 0:
+            return None
+        
+        return throwable[0]
             
         
         
@@ -126,6 +137,3 @@ class BackPack:
 
             case enums.BulletType.ROCKET:
                 return self.max_rocket_ammo
-            
-    def can_carry_ammo(self, value:int, ammo_type: enums.BulletType):
-        return self.get_ammo(ammo_type) + value <= self.get_max_ammo(ammo_type)

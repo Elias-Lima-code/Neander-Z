@@ -2,68 +2,34 @@ import pygame, math, datetime, random
 from pygame.math import Vector2 as vec
 
 from domain.models.weapon import Weapon
-from domain.utils import constants, enums
+from domain.utils import enums
 from domain.content.weapons.projectile import Projectile
 from domain.services import game_controller, menu_controller as mc, resources
 
 class FullAuto(Weapon):
     def __init__(self, pos, **kwargs):
-        
-        kwargs["bullet_type"] = enums.BulletType.PISTOL
-        kwargs["weapon_type"] = enums.Weapons.UZI
-        kwargs["is_primary"] = True
         super().__init__(pos, **kwargs)
-        
-        self.damage = 4
-        self.bullet_speed = 20
-        self.fire_rate = 10
-        self.reload_delay_ms = 1200
-        self.magazine_size = 25
-        self.magazine_bullets = self.magazine_size
-        self.bullet_max_range = 500
-        self.bullet_min_range = 300
-        self.fire_mode = enums.FireMode.FULL_AUTO
-        self.reload_type = enums.ReloadType.MAGAZINE
-        
-        self.bullet_spawn_offset = vec(self.rect.width/2 + 40, 2)
-        self.last_shot_time = None
-        
-        self.fire_frames = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.UZI, enums.AnimActions.SHOOT), 1.2, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.reload_frames = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.UZI, enums.AnimActions.RELOAD), 1.2, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        """The animation frames of this weapon when reloading."""
-        self.reload_end_frame = 10
-        self.playing_reload_end = False
-        
-        self.idle_frame = game_controller.scale_image(pygame.image.load(resources.get_weapon_path(enums.Weapons.UZI, enums.AnimActions.IDLE)), 1.2, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.image = self.idle_frame
-        self.current_frame = self.idle_frame
-        
-        self.barrel_offset = vec(0, 7)
         
         load_content = kwargs.pop("load_content", True)
         
         if not load_content:
             return
         
-        self.shoot_sounds = [pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.UZI,enums.AnimActions.SHOOT) + f'0{i}.mp3') for i in range(1,4)]
-        self.empty_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.UZI,enums.AnimActions.EMPTY_TRIGGER))
-        self.reload_start_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.UZI,enums.AnimActions.RELOAD))
-        self.reload_end_sound = pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.UZI,enums.AnimActions.RELOAD_END))
+        self.fire_frames = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.SHOOT), self.weapon_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self.reload_frames = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.RELOAD), self.weapon_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        """The animation frames of this weapon when reloading."""
+        
+        self.playing_reload_end = False
+        
+        self.shoot_sounds = [pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.SHOOT) + f'0{i}.mp3') for i in range(1,4)]
+        self.empty_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.EMPTY_TRIGGER))
+        self.reload_start_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.RELOAD))
+        self.reload_end_sound = pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.RELOAD_END))
         self.last_channel = 0
-   
-        for s in self.shoot_sounds:
-            s.set_volume(0.5)
-            
-   
-        self.empty_sound.set_volume(0.1)
-        self.reload_start_sound.set_volume(0.3)
-        self.reload_end_sound.set_volume(0.3)
-            
+     
     
     def fire_sound(self):
         sound = self.shoot_sounds[random.randint(0, len(self.shoot_sounds)-1)]
-        
-        
         pygame.mixer.Channel(self.last_channel).play(sound)
         self.last_channel += 1
         
@@ -74,8 +40,6 @@ class FullAuto(Weapon):
         if self.last_channel >= 4:
             self.last_channel = 0
             
-        
-    
     def fire_anim(self, speed: float):
         _still_firing = True
         self.firing_frame += speed
@@ -102,7 +66,7 @@ class FullAuto(Weapon):
         self.last_shot_time = datetime.datetime.now()
         
         self.fire_sound()
-        return Projectile(bullet_pos, self.weapon_aim_angle, self.bullet_speed, self.damage, player_net_id, game_controller.get_bullet_id(), max_range = self.bullet_max_range, min_range = self.bullet_min_range, bullet_type = self.bullet_type)
+        return Projectile(bullet_pos, self.weapon_aim_angle, self.bullet_speed, self.damage, player_net_id, game_controller.get_bullet_id(), max_range = self.bullet_max_range, min_range = self.bullet_min_range, bullet_type = self.bullet_type, kill_callback = self.bullet_kill_callback)
     
     def reload_anim(self, speed):
         self.reloading_frame += speed
@@ -131,6 +95,6 @@ class FullAuto(Weapon):
         if self.firing:
             self.firing = self.fire_anim(self.fire_rate/20 * mc.dt)
         if self.reloading:
-            speed = ((1000/self.reload_delay_ms) / len(self.reload_frames)*4)
+            speed = ((1000/self.reload_delay_ms) / len(self.reload_frames)*self.reload_speed_multiplier)
             self.reload_anim(speed * mc.dt)
             

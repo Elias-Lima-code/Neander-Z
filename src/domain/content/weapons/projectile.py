@@ -25,6 +25,7 @@ class Projectile(pygame.sprite.Sprite):
         self.total_damage = damage
         self.owner_offset = vec(0,0)
         self.is_alive = True
+        self.use_gravity = kwargs.pop("use_gravity", False)
         self.start_pos = pos
         self.tail_hitbox: Rectangle = self.get_tail()
         self.pierce_damage_multiplier = kwargs.pop("pierce_damage_multiplier", 1)
@@ -33,6 +34,7 @@ class Projectile(pygame.sprite.Sprite):
         self.hit_targets: list[int] = []
         
         self.hit_callback: function = kwargs.pop("hit_callback", lambda s: None)
+        self.kill_callback: function = kwargs.pop("kill_callback", lambda s: None)
         
         self.max_range = kwargs.pop("max_range", 0)
         self.min_range = kwargs.pop("min_range", 0)
@@ -182,6 +184,7 @@ class Projectile(pygame.sprite.Sprite):
     
     def kill(self):
         self.is_alive = False
+        self.kill_callback(len(self.hit_targets) > 0)
         super().kill()
     
     def bullet_collision(self):
@@ -191,12 +194,12 @@ class Projectile(pygame.sprite.Sprite):
             for c in collisions:
                 if c.id in self.hit_targets:
                     continue
+                self.hit_targets.append(c.id)
                 if isinstance(c, Enemy) or isinstance(c, Rectangle):
                     c.take_damage(self.damage, self.owner)
                 _collided = True
                 if self.pierce_damage_multiplier == 1:
                     return _collided
-                self.hit_targets.append(c.id)
         return _collided
     
     def get_netdata(self):

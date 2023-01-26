@@ -13,7 +13,9 @@ class Rectangle(pygame.sprite.Sprite, IGravitable):
         """The position of the top-left corner of the surface.""" 
         
         self.id = kwargs.pop("id", 0)
-        """The id of this rectangle.""" 
+        """The id of this rectangle."""
+        
+        self.owner = kwargs.pop("owner", None)
         
         self.image = pygame.Surface(size, pygame.SRCALPHA)
         """The map image/surface.""" 
@@ -61,11 +63,12 @@ class Rectangle(pygame.sprite.Sprite, IGravitable):
         self.rect.topleft = self.pos
         
     def update_pos(self):
-        self.pos = self.rect.topleft
+        self.pos = vec(self.rect.topleft)
         
     def set_rect(self, rect: pygame.Rect):
         self.rect = rect
         self.image = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        self.update_pos()
         self.rerender()
         
     def rerender(self):

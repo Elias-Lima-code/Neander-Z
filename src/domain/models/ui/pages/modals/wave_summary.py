@@ -7,6 +7,7 @@ from domain.utils import colors, constants, enums
 from domain.models.ui.button import Button
 from domain.models.ui.pages.modals.modal import Modal
 from domain.models.ui.pages.modals.store_section import Store
+from domain.models.ui.pages.modals.inventory_section import Inventory
 
 class WaveSummary(Modal):
     def __init__(self, results: tuple[WaveResult, WaveResult], **kwargs):
@@ -22,6 +23,7 @@ class WaveSummary(Modal):
         
         
         self.store_section = Store(self.P1_RESULT.player, self.panel_margin, on_return = lambda: self.set_tab(0))
+        self.inventory_section = Inventory(self.P1_RESULT.player, self.panel_margin, on_return = lambda: self.set_tab(0))
         
         btn_dict = {
             "text_font": resources.px_font(30),
@@ -34,7 +36,8 @@ class WaveSummary(Modal):
         self.buttons: list[Button] = []
         self.buttons.extend([
             Button(vec(_btn_pos), f'{resources.IMAGES_PATH}ui\\btn_small.png', scale = 2, text = "Store", on_click = lambda: self.set_tab(1),**btn_dict),
-            Button(vec(_btn_pos + _btn_margin), f'{resources.IMAGES_PATH}ui\\btn_small.png', scale = 2, text = "Ready", on_click = self.check_btn_ready,**btn_dict),
+            Button(vec(_btn_pos + _btn_margin), f'{resources.IMAGES_PATH}ui\\btn_small.png', scale = 2, text = "Inventory", on_click = lambda: self.set_tab(2),**btn_dict),
+            Button(vec(_btn_pos + _btn_margin*2), f'{resources.IMAGES_PATH}ui\\btn_small.png', scale = 2, text = "Ready", on_click = self.check_btn_ready,**btn_dict),
         ]) 
         self.buttons.append(
             Button(vec(self.buttons[-1].rect.topright), f'{resources.IMAGES_PATH}ui\\btn_square.png', scale = 2, text = "P2", on_click = lambda: None, on_hover = lambda: None, enabled = False,**btn_dict)
@@ -46,24 +49,31 @@ class WaveSummary(Modal):
             case 0:
                 self.buttons[0].show()
                 self.buttons[1].show()
+                self.buttons[2].show()
             case 1:
                 self.buttons[0].hide()
                 self.buttons[1].hide()
+                self.buttons[2].hide()
+            case 2:
+                self.buttons[0].hide()
+                self.buttons[1].hide()
+                self.buttons[2].hide()
+                self.inventory_section.load_inventory()
            
     
     def check_btn_ready(self):
         self.p1_ready = not self.p1_ready
-        btn = self.buttons[1]
+        btn = self.buttons[2]
         if self.p1_ready:
             btn.set_image(f'{resources.IMAGES_PATH}ui\\btn_small_green.png')
             btn.text_surface = btn.start_text
             btn.set_text('Cancel')
-            btn.default_on_hover()
+            btn.default_on_hover(btn)
         else:
             btn.set_image(f'{resources.IMAGES_PATH}ui\\btn_small.png')
             btn.text_surface = btn.start_text
             btn.set_text('Ready')
-            btn.default_on_hover()
+            btn.default_on_hover(btn)
             
     
     def draw_summary(self, screen):
@@ -86,22 +96,26 @@ class WaveSummary(Modal):
         lbl_money = menu_controller.get_text_surface("earned money:", colors.WHITE, resources.px_font(28))
         lbl_kills = menu_controller.get_text_surface("total kills:", colors.WHITE, resources.px_font(28))
         lbl_headshots = menu_controller.get_text_surface("headshot kills:", colors.WHITE, resources.px_font(28))
+        lbl_precision = menu_controller.get_text_surface("precision:", colors.WHITE, resources.px_font(28))
         
         p1_score = menu_controller.get_text_surface(str(self.P1_RESULT.score), colors.YELLOW, resources.px_font(22))
         p1_money = menu_controller.get_text_surface(f'$ {self.P1_RESULT.money:.2f}', colors.GREEN, resources.px_font(22))
         p1_kills = menu_controller.get_text_surface(str(self.P1_RESULT.kills_count), colors.RED, resources.px_font(22))
         p1_headshots = menu_controller.get_text_surface(str(self.P1_RESULT.headshot_kills_count), colors.RED, resources.px_font(22))
+        p1_precision = menu_controller.get_text_surface(f'{round(self.P1_RESULT.bullets_hit * 100 / self.P1_RESULT.bullets_shot, 2)}%', colors.WHITE, resources.px_font(22))
         
         if self.P2_RESULT != None:
             p2_score = menu_controller.get_text_surface(str(self.P2_RESULT.score), colors.YELLOW, resources.px_font(22))
             p2_money = menu_controller.get_text_surface(f'$ {self.P2_RESULT.money:.2f}', colors.GREEN, resources.px_font(22))
             p2_kills = menu_controller.get_text_surface(str(self.P2_RESULT.kills_count), colors.RED, resources.px_font(22))
             p2_headshots = menu_controller.get_text_surface(str(self.P1_RESULT.headshot_kills_count), colors.RED, resources.px_font(22))
+            p2_precision = menu_controller.get_text_surface(f'{round(self.P2_RESULT.bullets_hit * 100 / self.P2_RESULT.bullets_shot, 2)}%', colors.WHITE, resources.px_font(22))
+            
 
-        labels = [lbl_score, lbl_money, lbl_kills, lbl_headshots]
-        p1_values = [p1_score, p1_money, p1_kills, p1_headshots]
+        labels = [lbl_score, lbl_money, lbl_kills, lbl_headshots, lbl_precision]
+        p1_values = [p1_score, p1_money, p1_kills, p1_headshots, p1_precision]
         if self.P2_RESULT != None:
-            p2_values = [p2_score, p2_money, p2_kills, p2_headshots]
+            p2_values = [p2_score, p2_money, p2_kills, p2_headshots, p2_precision]
         
         p1_surface = pygame.Surface((p1_icon.get_width() + p1_title.get_width() + 10, p1_icon.get_height() + 200), pygame.SRCALPHA)
         p1_surface.fill((0,0,0,0))
@@ -110,7 +124,7 @@ class WaveSummary(Modal):
             p2_surface = pygame.Surface((p2_icon.get_width() + p2_title.get_width() + 10, p2_icon.get_height() + 200), pygame.SRCALPHA)
             p2_surface.fill((0,0,0,0))
         
-        labels_surface = pygame.Surface(vec(screen_rect.width - self.panel_margin.x - _player_panels_margin.x - self.panel_margin.x/2 - (_player_panels_margin.x*2),200), pygame.SRCALPHA)
+        labels_surface = pygame.Surface(vec(screen_rect.width - self.panel_margin.x - _player_panels_margin.x - self.panel_margin.x/2 - (_player_panels_margin.x*2),250), pygame.SRCALPHA)
         labels_surface.fill((0,0,0,0))
         
         p1_surface.blit(p1_icon, (0,0))
@@ -169,13 +183,15 @@ class WaveSummary(Modal):
                 self.draw_summary(screen)
             case 1:
                 self.store_section.draw(screen)
+            case 2:
+                self.inventory_section.draw(screen)
         
         for b in self.buttons:
             if b.text == "P2":
                 if self.P2_RESULT == None:
                     continue
-                b.rect.left = self.buttons[1].rect.right
-                b.rect.centery = self.buttons[1].rect.centery
+                b.rect.left = self.buttons[2].rect.right
+                b.rect.centery = self.buttons[2].rect.centery
                 if self.p2_ready:
                     b.set_image(f'{resources.IMAGES_PATH}ui\\btn_square_green.png')
                 else:
@@ -188,8 +204,11 @@ class WaveSummary(Modal):
         super().update()
         events = kwargs.pop("events", [])
         
-        if self.tab_index == 1:
-            self.store_section.update(events = events)
+        match self.tab_index:
+            case 1:
+                self.store_section.update(events = events)
+            case 2:
+                self.inventory_section.update(events = events)
         
         for b in self.buttons:
             b.update()

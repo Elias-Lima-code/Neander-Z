@@ -13,7 +13,7 @@ playing = False
 player_state = {
     "state_name": "player",
     "character": enums.Characters.CARLOS,
-    "movement_speed": 0.5,
+    "movement_speed": 0.49,
     "jump_force": 9,
     "max_health": 100
 }
@@ -130,8 +130,11 @@ def app_loop():
         for event in _events:
             if event.type == pygame.QUIT:
                 quit_app()
-            if event.type == pygame.KEYDOWN:
-                pass
+            if event.type == pygame.KEYDOWN and current_page.name == "Game":
+                if event.key == pygame.K_UP:
+                    current_page.player.money += 100
+                if event.key == pygame.K_DOWN:
+                    current_page.player.money -= 100
                 
         
         playing = current_page.name == "Game"

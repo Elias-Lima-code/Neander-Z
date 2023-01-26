@@ -2,47 +2,36 @@ import pygame, math, datetime, random
 from pygame.math import Vector2 as vec
 
 from domain.models.weapon import Weapon
-from domain.utils import constants, enums, colors
+from domain.utils import enums, colors
 from domain.models.enemy import Enemy
 from domain.models.rectangle_sprite import Rectangle
 from domain.services import game_controller, menu_controller as mc, resources
 
 class Melee(Weapon):
     def __init__(self, pos, **kwargs):
-
-        kwargs["bullet_type"] = enums.BulletType.MELEE
-        kwargs["weapon_type"] = enums.Weapons.MACHETE
-        kwargs["is_primary"] = False
         super().__init__(pos, **kwargs)
-        
-        self.damage = 3
-        self.bullet_speed = 30
-        self.fire_rate = 2
-        self.reload_delay_ms = 0
-        self.last_shot_time = None
-        self.magazine_size = 0
-        self.magazine_bullets = 1
-        self.fire_mode = enums.FireMode.MELEE
-        self.reload_type = enums.ReloadType.NO_RELOAD
         
         self.player_net_id = 0
         
         self.hiting = False
-        self.hit_frame = 8
+        self.hit_frame = kwargs.pop("hit_frame", 0)
         self.playing_hit_sound = False
         self.hit_rectangle: Rectangle = None
-        self.attack_box = vec(50,20)
-        
-        self.barrel_offset = vec(0,0)
+        self.attack_box = kwargs.pop("attack_box", vec(10,10))
+        self.magazine_bullets = 1
+        self.has_stamina = True
+        self.stamina_use = kwargs.pop("stamina_use", 1)
         
         load_content = kwargs.pop("load_content", True)
         
         if not load_content:
             return
         
-        self.attack_frames_1 = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.MACHETE, enums.AnimActions.SHOOT)+ "\\01", convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.attack_frames_2 = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.MACHETE, enums.AnimActions.SHOOT)+ "\\02", convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.attack_frames_3 = game_controller.load_sprites(resources.get_weapon_path(enums.Weapons.MACHETE, enums.AnimActions.SHOOT)+ "\\03", 0.08, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self.hits_count = 0
+        
+        self.attack_frames_1 = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.SHOOT)+ "\\01", convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self.attack_frames_2 = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.SHOOT)+ "\\02", convert_type=enums.ConvertType.CONVERT_ALPHA)
+        self.attack_frames_3 = game_controller.load_sprites(resources.get_weapon_path(self.weapon_type, enums.AnimActions.SHOOT)+ "\\03", self.weapon_scale, enums.ConvertType.CONVERT_ALPHA)
         
         self.attack_frames = [self.attack_frames_1, self.attack_frames_2, self.attack_frames_3]
         self.current_attack = 0
@@ -51,16 +40,9 @@ class Melee(Weapon):
         self.image = self.idle_frame
         self.current_frame = self.idle_frame
         
-        self.swipe_sounds = [pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.MACHETE,enums.AnimActions.SHOOT) + f'0{i}.mp3') for i in range(1,4)]
-        self.hit_sounds = [pygame.mixer.Sound(resources.get_weapon_sfx(enums.Weapons.MACHETE,enums.AnimActions.HIT) + f'0{i}.mp3') for i in range(1,4)]
+        self.swipe_sounds = [pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.SHOOT) + f'0{i}.mp3') for i in range(1,4)]
+        self.hit_sounds = [pygame.mixer.Sound(resources.get_weapon_sfx(self.weapon_type,enums.AnimActions.HIT) + f'0{i}.mp3') for i in range(1,4)]
 
-        for s in self.swipe_sounds:
-            s.set_volume(0.5)
-            
-        for h in self.hit_sounds:
-            h.set_volume(0.5)
-            
-            
     def attack_sound(self, hit = False):
         sound = None
         if hit:
@@ -74,11 +56,11 @@ class Melee(Weapon):
     def fire_anim(self, speed: float):
         self.firing_frame += speed
         
-        if int(self.firing_frame) == self.hit_frame and not self.playing_hit_sound:
+        if int(self.firing_frame) in [self.hit_frame, self.hit_frame-1, self.hit_frame+1] and not self.playing_hit_sound:
             self.attack()
             self.playing_hit_sound = True
         
-        if self.firing_frame > len(self.attack_frames_1)-1:
+        if self.firing_frame > len(self.attack_frames[self.current_attack])-1:
             self.firing_frame = 0
             self.firing = False
             self.playing_hit_sound = False
@@ -90,6 +72,9 @@ class Melee(Weapon):
             self.current_frame = pygame.transform.flip(self.current_frame, False, True)
     
     def can_shoot(self):
+        if not self.has_stamina:
+            return False
+        
         _now = datetime.datetime.now()
         
         if self.last_shot_time == None:
@@ -123,20 +108,21 @@ class Melee(Weapon):
     def draw(self, screen: pygame.Surface, offset: vec):
         super().draw(screen, offset)
         
-        _attack_hit_rect = pygame.Rect(self.rect.center, self.attack_box)
-        if self.dir > 0:
-            _attack_hit_rect.left = self.rect.centerx + 3 * self.dir
-        elif self.dir < 0:
-            _attack_hit_rect.right = self.rect.centerx - 3 * self.dir
+        player_anchor = game_controller.point_to_angle_distance(vec(self.rect.center), -self.weapon_distance, -math.radians(self.weapon_aim_angle))
+        hit_pos = game_controller.point_to_angle_distance(player_anchor, self.weapon_distance + self.attack_box.x/2, -math.radians(self.weapon_aim_angle))
         
-        self.hit_rectangle = Rectangle(self.attack_box, _attack_hit_rect.topleft + offset)
+        self.hit_rectangle = Rectangle(self.attack_box, hit_pos - self.attack_box/2 + offset)
+        # self.hit_rectangle.draw(screen, offset)
             
     def attack(self):
         self.hiting = True
         
-        collided = self.melee_collision()
+        self.hits_count += 1
         
-        self.attack_sound(collided)
+        collided, play_sound = self.melee_collision()
+        
+        if play_sound or not collided:
+            self.attack_sound(collided)
         
         return collided
             
@@ -144,9 +130,18 @@ class Melee(Weapon):
         for group in game_controller.bullet_target_groups:
             collisions = pygame.sprite.spritecollide(self.hit_rectangle, group, False)
             for c in collisions:
-                if isinstance(c, Enemy) or isinstance(c, Rectangle):
+                _play_sound = True
+                if isinstance(c, Enemy) or (isinstance(c, Rectangle) and "zombie" in c.name):
                     c.take_damage(self.damage, self.player_net_id)
-                return True
-        return False
+                    c.owner.wave.players_scores[1].bullets_shot += self.hits_count
+                    c.owner.wave.players_scores[1].bullets_hit += 1
+                    self.hits_count = 0
+                    
+                    if c.name == "zombie_head" and c.owner.enemy_name == enums.Enemies.Z_RAIMUNDO and c.owner.helmet_stage < 3:
+                        _play_sound = False
+                    
+                    return True, _play_sound
+                return False, _play_sound
+        return False, False
             
     

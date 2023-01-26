@@ -1,5 +1,5 @@
 import pygame, time
-from datetime import datetime
+import datetime
 from pygame.math import Vector2 as vec
 
 from domain.services import game_controller, menu_controller as mc, resources
@@ -12,11 +12,15 @@ from domain.models.igravitable import IGravitable
 from domain.models.rectangle_sprite import Rectangle
 from domain.models.ui.pages.page import Page
 from domain.models.ui.pages.modals.wave_summary import WaveSummary
+from domain.models.wave import Wave
 from domain.models.ui.pages.modals.pause import Pause
+from domain.models.ui.popup_text import Popup
 from domain.models.wave_result import WaveResult
 from domain.content.enemies.z_roger import ZRoger
-from domain.content.waves.wave_1 import Wave_1
+from domain.content.waves.simple_wave import SimpleWave
+from domain.content.waves.boss_wave import BossWave
 from domain.content.weapons.projectile import Projectile
+from domain.content.weapons.charge import Charge
 
 class Game(Page):
     def __init__(self, client_type: enums.ClientType, screen: pygame.Surface, **kwargs):
@@ -70,7 +74,7 @@ class Game(Page):
         
         self.test_objects = []
 
-        self.current_wave = None
+        self.current_wave: Wave = None
         
         self.pause_screen: Pause = None
         
@@ -78,8 +82,8 @@ class Game(Page):
         
         self.focused = True
         
-        
-        
+        self.game_over_time: datetime.datetime = None
+        self.game_over_popup: Popup = None
         
         #ui
         
@@ -97,102 +101,75 @@ class Game(Page):
         """Starts the game.
         """
         
-        
+        self.current_wave = self.create_wave(constants.WAVES[1])
+        self.start_wave()
         self.map = Map(self.screen, f"{resources.IMAGES_PATH}map_graveyard.png", floor_y = 50)
         self.map.rect.bottomleft = self.screen.get_rect().bottomleft
         game_controller.map_size = vec(self.map.rect.size)
         game_controller.screen_size = vec(self.screen.get_size())
+        game_controller.screen_size = vec(self.screen.get_size())
+        game_controller.map_size = vec(self.map.rect.size)
         self.pause_screen = Pause(self)
-        
+        self.gravity_accelaration = 0.5
+        self.friction = -0.12
         
         _p1_net_id = int(self.client_type)
-        self.player = Player((20, 0), enums.Characters.CARLOS if _p1_net_id != 2 else enums.Characters.CLEITON, net_id = _p1_net_id, name = "P1", screen_size = self.screen.get_size())
+        self.player = Player((500, 0), enums.Characters.CARLOS if _p1_net_id != 2 else enums.Characters.CLEITON, net_id = _p1_net_id, name = "P1", screen_size = self.screen.get_size())
+        self.player.load_state(mc.player_state)
+        self.player.rect.bottom = self.map.floor.rect.top
+        self.player.pos = vec(self.player.rect.topleft)
         
         if self.client_type != enums.ClientType.SINGLE:
             self.player2 = Player((80, 0), enums.Characters.CARLOS if _p1_net_id == 2 else enums.Characters.CLEITON, net_id = 1 if self.client_type == 2 else 2, name = "P2", gravity_enabled = False)
+            self.player2.rect.bottom = self.map.floor.rect.top
+            self.player2.pos = vec(self.player.rect.topleft)
         
         self.collision_group = pygame.sprite.Group([self.map.floor, self.map.left_wall, self.map.right_wall])
-        self.players_group =  pygame.sprite.Group([self.player])
+        self.players_group =  pygame.sprite.Group([self.player.hitbox_body])
         self.jumpable_group = pygame.sprite.Group([self.map.floor])
         self.bullets_group = pygame.sprite.Group()
-        
 
-        self.reset_game()
+        game_controller.bullet_target_groups = [self.collision_group, self.current_wave.enemies_hitbox_group]
+        game_controller.enemy_target_groups = [self.players_group]
+        
         
         if self.client_type != enums.ClientType.SINGLE:
             self.jumpable_group.add(self.player2)
             
+        
+    
+    def next_wave(self):
+        next_wave = 0 
+        if self.current_wave == None:
+            next_wave = 1
+        elif len(constants.WAVES) < self.current_wave.wave_number+1:
+            next_wave = 1
+        else:
+            next_wave = self.current_wave.wave_number+1
+        
+        self.current_wave = self.create_wave(constants.WAVES[next_wave])
+        self.start_wave()
+    
+    def create_wave(self, values_dict: dict):
+        dic = values_dict.copy()
+        match values_dict["wave_type"]:
+            case enums.WaveType.SIMPLE:
+                return SimpleWave(self, **dic)
+            case enums.WaveType.BOSS:
+                return BossWave(self, **dic)
             
-    def new_wave(self, wave):
+    def start_wave(self):
         self.pressed_keys.clear()
         self.wave_summary = None
         self.focused = True
-        self.current_wave = wave
         
         game_controller.bullet_target_groups.append(self.current_wave.enemies_hitbox_group)
+
+        if self.game_over_popup != None:
+            self.game_over_popup.destroy()
         self.current_wave.start()
-            
-    def reset_game(self):
-        """Resets all players attributes to default values.
-        """
-        
-        self.wave_summary = None
-        self.current_wave = Wave_1(self)
-        game_controller.screen_size = vec(self.screen.get_size())
-        game_controller.map_size = vec(self.map.rect.size)
-        game_controller.bullet_target_groups = [self.collision_group, self.current_wave.enemies_hitbox_group]
-        game_controller.enemy_target_groups = [self.players_group]
-        self.gravity_accelaration = 0.5
-        self.friction = -0.12
-        
-        self.bullets_group.empty()
-        
-        _y = self.screen.get_height() - 200
-        
-        p1_pos, p2_pos = None, None
-        
-        if self.client_type == enums.ClientType.HOST:
-            p1_pos = (20, _y)
-            p2_pos = (80, _y)
-        else:
-            p1_pos = (80, _y)
-            p2_pos = (20, _y)
-        
-        self.player.image = game_controller.scale_image(pygame.image.load(resources.get_character_path(self.player.character, enums.AnimActions.IDLE)), self.player.image_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
-        self.player.pos = vec(p1_pos)
-        self.player.rect = self.player.image.get_rect()
-        self.player.rect.topleft = self.player.pos
-        self.player.speed = vec(0,0)
-        self.player.acceleration = vec(0,0)
-        self.player.last_rect = self.player.rect
-        self.player.offset_camera = vec(0,0)
-        self.player.health = self.player.max_health
-        self.player.health_bar.value = self.player.max_health
-        self.player.health_bar.target_value = self.player.max_health
-        self.player.score = 0
-        # self.player.money = 0
 
-        self.player.load_state(mc.player_state)
-        
-        if self.client_type != enums.ClientType.SINGLE:
-            self.player2.image = game_controller.scale_image(pygame.image.load(resources.get_character_path(self.player2.character, enums.AnimActions.IDLE)), self.player2.image_scale, convert_type=enums.ConvertType.CONVERT_ALPHA)
-            self.player2.pos = vec(p2_pos)
-            self.player2.rect = self.player2.image.get_rect()
-            self.player2.rect.topleft = self.player2.pos
-            self.player2.size = self.player2.rect.size
-            self.player2.speed = vec(0,0)
-            self.player2.acceleration = vec(0,0)
-            self.player2.last_rect = self.player2.rect
-            self.player2.health = self.player2.max_health
-            self.player2.health_bar.value = self.player2.max_health
-            self.player2.health_bar.target_value = self.player2.max_health
-            self.player2.score = 0        
-            self.player2.money = 0
 
-        
-        
-        if self.client_type != enums.ClientType.GUEST:
-            self.current_wave.start()
             
 
     def end_wave(self, result: dict[int, WaveResult]):
@@ -201,7 +178,10 @@ class Game(Page):
 
         result[_p1].player = self.player
         
+        self.player.survived_wave += 1
+        
         if self.client_type != enums.ClientType.SINGLE:
+            self.player2.survived_wave += 1
             _p2 = self.player2.net_id             
             self.player2.score += result[_p2].score
             self.player2.money += result[_p2].money
@@ -210,7 +190,7 @@ class Game(Page):
             
         
         
-        self.wave_summary = WaveSummary((result[1], result[2] if self.client_type != enums.ClientType.SINGLE else None), start_time = datetime.now())
+        self.wave_summary = WaveSummary((result[1], result[2] if self.client_type != enums.ClientType.SINGLE else None), start_time = datetime.datetime.now())
 
     def get_ammo_icon(self, bullet_type: enums.BulletType):
         match bullet_type:
@@ -253,6 +233,25 @@ class Game(Page):
         _txt_score_rect.centery = _head_rect.centery
         _txt_score_rect.left = _txt_money_rect.right + _horizontal_margin*2
         
+        
+        _txt_wave_number = mc.get_text_surface(f"Wave {self.current_wave.wave_number}", colors.PASTEL_RED, resources.px_font(18))
+        _txt_wave_number_rect = _txt_wave_number.get_rect()
+        _txt_wave_number_rect.top = _txt_score_rect.bottom + _top_margin
+        _txt_wave_number_rect.right = self.screen.get_width() - _horizontal_margin
+        
+        
+        _skull = game_controller.scale_image(pygame.image.load(f'{resources.IMAGES_PATH}ui\\skull.png'), 0.8, convert_type=enums.ConvertType.CONVERT_ALPHA)
+        _skull_rect = _skull.get_rect()
+        _skull_rect.top = _txt_wave_number_rect.bottom + _top_margin/2
+        _skull_rect.right = self.screen.get_width() - _horizontal_margin
+        
+        _has_boss = type(self.current_wave) == BossWave and (self.current_wave.boss == None or self.current_wave.boss.is_alive)
+        _txt_enemies_count = mc.get_text_surface(f"{self.current_wave.killed_enemies_count}/{'-' if _has_boss else self.current_wave.total_enemies}", colors.LIGHT_GRAY, resources.px_font(18))
+        _txt_enemies_rect = _txt_enemies_count.get_rect()
+        _txt_enemies_rect.centery = _skull_rect.centery
+        _txt_enemies_rect.right = _skull_rect.left - _horizontal_margin
+        
+        
         _ammo_icon = self.get_ammo_icon(self.player.current_weapon.bullet_type)
         _ammo_icon_rect = _ammo_icon.get_rect()
         _ammo_icon_rect.bottom = self.screen.get_height() - _top_margin
@@ -283,6 +282,11 @@ class Game(Page):
         self.screen.blit(self._money_icon, _money_icon_rect)
         self.screen.blit(_txt_money, _txt_money_rect) 
         self.screen.blit(_txt_score, _txt_score_rect)
+        _enemies_bg = pygame.Rect((_txt_enemies_rect.left, _txt_wave_number_rect.top) - vec(5,2), vec(_txt_enemies_rect.width, _txt_enemies_rect.height + _txt_wave_number_rect.height + _top_margin) + vec(self.screen.get_width() - _skull_rect.right + _skull_rect.width + _horizontal_margin, 0) + vec(10,3))
+        pygame.draw.rect(self.screen, colors.MEDIUM_GRAY, _enemies_bg)
+        self.screen.blit(_txt_wave_number, _txt_wave_number_rect)
+        self.screen.blit(_skull, _skull_rect)
+        self.screen.blit(_txt_enemies_count, _txt_enemies_rect)
         
         self.screen.blit(_ammo_icon, _ammo_icon_rect)
         if self.player.current_weapon.bullet_type != enums.BulletType.MELEE:
@@ -305,7 +309,7 @@ class Game(Page):
                 player_aim_angle = self.player.current_weapon.weapon_aim_angle,
                 player_falling_ground = self.player.falling_ground,
                 player_running = self.player.running,
-                player_jumping = self.player.jumping,
+                player_jumping = self.player.jumping_sideways,
                 player_turning_dir = self.player.turning_dir,
                 player_firing = self.player.current_weapon.firing
             )
@@ -334,7 +338,7 @@ class Game(Page):
         """
         if data.command_id == int(enums.Command.RESTART_GAME):
             self.wave_summary = None
-            game_controller.restart_game(self)
+            self.restart_game()
         
         if self.client_type == enums.ClientType.GUEST:
             self.player.score = data.player2_score
@@ -362,7 +366,7 @@ class Game(Page):
         
         self.player2.falling_ground = data.player_falling_ground
         self.player2.running = data.player_running
-        self.player2.jumping = data.player_jumping
+        self.player2.jumping_sideways = data.player_jumping
         self.player2.turning_dir = data.player_turning_dir
         if data.player_firing:
             self.player2.firing = True
@@ -406,7 +410,7 @@ class Game(Page):
         e = None
         match data["enemy_name"]:
             case str(enums.Enemies.Z_ROGER.name):
-                e = ZRoger((0,0), enums.Enemies.Z_ROGER, self.current_wave)
+                e = ZRoger((0,0), self.current_wave)
                 e.load_netdata(data)
                 
         
@@ -423,9 +427,6 @@ class Game(Page):
         if b != None:
             game.bullets_group.add(b)
             
-    
-    
-    
     def apply_gravity(self, target: IGravitable):
         """Applies gravity to the specified IGravitable object.
 
@@ -434,8 +435,9 @@ class Game(Page):
         """        
         target.last_rect = target.rect.copy()
         
+        _scale = target.gravity_scale if hasattr(target, "gravity_scale") else 1
         target.acceleration.y = self.gravity_accelaration
-        target.speed.y += target.acceleration.y * mc.dt
+        target.speed.y += target.acceleration.y * mc.dt * _scale
         target.pos.y += (target.speed.y + 0.5 * target.acceleration.y) * mc.dt
     
     def process_gravitables(self):
@@ -501,23 +503,48 @@ class Game(Page):
         self.command_id = int(enums.Command.RESTART_GAME)
             
         time.sleep(0.5)
-        game_controller.restart_game(self)
+        self.restart_game()
         
         
     def restart_game(self):
-        self.focused = True
-        self.wave_summary = None
-        self.pause_screen.hide()
-        if self.client_type == enums.ClientType.SINGLE:
-            game_controller.restart_game(self)
-        elif self.client_type == enums.ClientType.HOST:
-            self.send_restart()
+        if self.game_over_popup != None:
+            self.game_over_popup.destroy()
+        game_controller.restart_game(self)
+
+    def game_over(self):
+        self.game_over_time = datetime.datetime.now()
+        self.focused = False
+        pygame.mouse.set_cursor()
+        self.game_over_popup = Popup("Game Over", (0,0), show_on_init = False, **constants.POPUPS["game_over"])
+        mc.popup(self.game_over_popup, center=True)
+        self.game_over_popup.rect.top -= self.game_over_popup.rect.height
+        self.pause_screen.title = ""
+        self.pause_screen.buttons[0].visible = False
             
     def handle_shooting(self):
-        if "mouse_0" not in self.pressed_keys:
+        #if current weapon has burst firemode and can shoot one more round
+        _is_burst = self.player.current_weapon.fire_mode == enums.FireMode.BURST
+        
+        if self.player.rolling or self.player.current_throwable.throwing or self.player.current_throwable.cook_start_time != None:
             return
         
-        _bullets = self.player.shoot()
+        if "mouse_0" not in self.pressed_keys and (not _is_burst or(_is_burst and not self.player.current_weapon.firing_burst)):
+            return
+        
+        if self.player.current_weapon.reload_type == enums.ReloadType.SINGLE_BULLET and self.player.current_weapon.bullet_type == enums.BulletType.SHOTGUN:
+            self.player.current_weapon.reloading = False
+        
+        def bullet_kill_callback(hit_target):
+            if hit_target:
+                self.current_wave.players_scores[1].bullets_hit += 1
+        
+        
+        _bullets = self.player.shoot(kill_callback = bullet_kill_callback)
+        
+        #if current weapon doesn't allow holding trigger
+        if self.player.current_weapon.fire_mode not in constants.HOLD_TRIGGER_FIREMODES:
+            if "mouse_0" in self.pressed_keys:
+                self.pressed_keys.remove("mouse_0")
         
         if _bullets == None:
             return
@@ -527,13 +554,61 @@ class Game(Page):
             _bullets = [_bullets]
         if len(_bullets) > 0:
             for b in _bullets:
+                self.current_wave.players_scores[1].bullets_shot += 1
+                self.bullets_group.add(b)
+                
+    def handle_grenades(self):
+        #if current weapon has burst firemode and can shoot one more round
+        
+        if (pygame.K_g not in self.pressed_keys and self.player.current_throwable.cook_start_time == None)or\
+            (pygame.K_g in self.pressed_keys and self.player.current_throwable.cook_start_time != None):
+            return
+        
+        def charge_kill_callback(hit_target):
+            if hit_target:
+                self.current_wave.players_scores[1].bullets_hit += 1
+                
+        if self.player.current_throwable.cook_start_time == None and not self.player.current_weapon.reloading:
+            self.player.current_throwable.cook_grenade()
+            return
+        
+        
+        
+        _charges = self.player.throw_grenade(kill_callback = charge_kill_callback)
+        
+        if pygame.K_g in self.pressed_keys:
+            self.pressed_keys.remove(pygame.K_g)
+        
+        if _charges == None:
+            return
+
+        if type(_charges) != list:
+            _charges = [_charges]
+        if len(_charges) > 0:
+            for b in _charges:
+                self.current_wave.players_scores[1].bullets_shot += 1
                 self.bullets_group.add(b)
     
 
     def update(self, **kwargs):
         events = kwargs.pop("events", None)
         
+        if self.current_wave != None:
+            if self.current_wave.started and not self.current_wave.loaded:
+                return
+        
+        if not pygame.mixer.music.get_busy() and self.focused:
+            mc.play_music(resources.get_song(resources.Songs.WAVE_1), 0.1, -1)
+        
         game_controller.handle_events(self, events)
+        
+        if self.pause_screen != None and self.pause_screen.active:
+            if self.player.reload_popup != None:
+                self.player.reload_popup.destroy()
+                self.player.reload_popup = None
+            self.pause_screen.update()
+            if self.client_type == enums.ClientType.SINGLE:
+                return
         
         #input
         if pygame.K_p in self.pressed_keys:
@@ -556,19 +631,16 @@ class Game(Page):
         
         self.handle_shooting()
         
+        self.handle_grenades()
+        
         if self.wave_summary != None:
             self.focused = False
             self.wave_summary.update(events = events)
             # if wave interval is out or p1 is ready and is singleplayer or both players are ready
             if self.wave_summary.timed_out or (self.wave_summary.p1_ready and (self.wave_summary.p2_ready or self.client_type == enums.ClientType.SINGLE)):
-                wave = Wave_1(self)
-                self.new_wave(wave)
+                self.next_wave()
             return
-        
-        
-        if not pygame.mixer.music.get_busy():
-            mc.play_music(resources.get_song(resources.Songs.WAVE_1), 0.1, -1)
-                
+            
         # p1
         self.player.update(game = self)
         # p2
@@ -577,14 +649,20 @@ class Game(Page):
         # wave logic
         self.current_wave.update()
         # enemies
-        self.current_wave.update_enemies()
+        if self.player.is_alive or (self.client_type != enums.ClientType.SINGLE and self.player2.is_alive):
+            self.current_wave.update_enemies()
+        else:
+            if self.game_over_time == None:
+                self.game_over()
+            if self.game_over_popup._current_text_color[3] == 255:
+                self.pause_screen.show()
         
         self.collision_group.update(group_name = "collision")
         self.jumpable_group.update(group_name = "jumpable")
     
         self.process_gravitables()    
             
-        self.bullets_group.update(offset = self.player.offset_camera)
+        self.bullets_group.update(offset = self.player.offset_camera, game = self)
         
         self.center_camera()
         
@@ -607,22 +685,28 @@ class Game(Page):
             self.restart_game()
 
         if self.player.pos.y > self.map.rect.height:
-            self.player.pos.y = 0
-            self.player.update_rect()
+            self.player.rect.bottom = self.map.rect.bottom - self.map.floor_y
+            self.player.pos = vec(self.player.rect.topleft)
+            
+        for enemy in self.current_wave.enemies_group.sprites():
+            if enemy.rect.top > self.map.rect.height:
+                enemy.rect.bottom = self.map.rect.bottom - self.map.floor_y
+                enemy.pos = vec(enemy.rect.topleft)
             
         if self.client_type != enums.ClientType.SINGLE and self.player2.pos.y > self.map.rect.height:
             self.player2.pos.y = 0
             self.player2.update_rect()
             
-        if self.pause_screen != None and self.pause_screen.active:
-            if self.player.reload_popup != None:
-                self.player.reload_popup.destroy()
-                self.player.reload_popup = None
-            self.pause_screen.update()
+        self.last_pressed_keys = self.pressed_keys.copy()
         
     
        
     def draw(self):
+        
+        if not self.current_wave.loaded:
+            self.screen.fill(colors.BLACK)
+            return
+        
         # Map
         self.screen.blit(self.map.image, vec(self.map.rect.topleft) - self.player.offset_camera)
         
@@ -630,23 +714,38 @@ class Game(Page):
             self.wave_summary.draw(self.screen)
             return
         
+        def draw_players():
+            # P1
+            self.player.draw(self.screen, self.player.offset_camera)
+            # P2
+            if self.client_type != enums.ClientType.SINGLE:
+                self.player2.draw(self.screen, self.player.offset_camera)
+        
+        draw_players()
+        
         # Wave
         self.current_wave.draw(self.screen, self.player.offset_camera)
         # bullets
         for b in self.bullets_group:
             b.draw(self.screen, self.player.offset_camera)
-        # P1
-        self.player.draw(self.screen, self.player.offset_camera)
-        # P2
-        if self.client_type != enums.ClientType.SINGLE:
-            self.player2.draw(self.screen, self.player.offset_camera)
+            
+        #ui
+        if self.game_over_time == None:
+            self.draw_ui()
+        else:
+            panel_color = mc.fade_in_color(colors.BLACK, 255, self.game_over_time, self.game_over_time + datetime.timedelta(milliseconds=3000))
+            panel_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+            panel_surface.fill(panel_color)
+            self.screen.blit(panel_surface, (0,0))
+            
+            if panel_color[3] == 255:
+                self.game_over_popup.show()
+                
+            draw_players()
+                
             
             
         # self.blit_debug()
-        
-        self.last_pressed_keys = self.pressed_keys.copy()
-
-        self.draw_ui()
         
         if self.pause_screen != None and self.pause_screen.active:
             self.pause_screen.draw(self.screen)

@@ -2,8 +2,8 @@ import pygame,datetime
 from pygame.math import Vector2 as vec
 
 
-from domain.utils import colors, constants, enums
-from domain.services import game_controller, menu_controller
+from domain.utils import colors, enums
+from domain.services import game_controller, menu_controller, resources
 from domain.models.ui.popup_text import Popup
 from domain.models.backpack import BackPack
 
@@ -14,16 +14,25 @@ class Weapon(pygame.sprite.Sprite):
         # The name of the object, for debugging.
         self.name = kwargs.pop("name", "weapon")
         
+        
         self.player_backpack: BackPack = kwargs.pop("backpack", None)
         self.bullet_type: enums.BulletType = kwargs.pop("bullet_type", enums.BulletType.PISTOL)
         self.weapon_type: enums.Weapons = kwargs.pop("weapon_type", enums.Weapons.P_1911)
+        self.display_name = kwargs.pop("display_name", "Weapon")
+        self.purchase_price = kwargs.pop("purchase_price", 0)
+        
+        
         self.fire_mode = kwargs.pop("fire_mode", enums.FireMode.SEMI_AUTO)
         """How this weapon fires (auto, semi-auto, pump, single shot...)."""
         self.reload_type = kwargs.pop("reload_type", enums.ReloadType.MAGAZINE)
         self.is_primary = kwargs.pop("is_primary", False)
+        self.weapon_switch_ms = kwargs.pop("weapon_switch_ms", 300)
         
         self.bullet_max_range = kwargs.pop("bullet_max_range", 600)
         self.bullet_min_range = kwargs.pop("bullet_min_range", 500)
+        
+        self.bullet_kill_callback: function = kwargs.pop("bullet_hit_callback", lambda b: None)
+        self.reload_speed_multiplier = kwargs.pop("reload_speed_multiplier", 1)
         
         self.damage = kwargs.pop("damage", 0)
         """The damage of the weapon's bullet."""
@@ -36,15 +45,26 @@ class Weapon(pygame.sprite.Sprite):
         self.magazine_bullets = self.magazine_size
         """The number of bullets currently in the magazine."""
         
+        self.gravity_scale = kwargs.pop("gravity_scale", 1)
+        """How much the projectiles of this weapon are affected by the gravity."""
+        
+        
         self.weapon_distance = kwargs.pop("weapon_distance",0)
         """The distance from the weapon anchor to the weapon position."""
+        self.barrel_offset = kwargs.pop("barrel_offset", vec(0,0))
         
         self.start_total_ammo = self.player_backpack.get_ammo(self.bullet_type) if self.player_backpack != None else 0
         """The start number of extra bullets."""
         
+        self.upgrades_dict: dict = kwargs.pop("upgrades_dict", None)
+        """The upgrades steps, values and prices of this weapon."""
+        
+        self.upgrades_map: dict = kwargs.pop("upgrades_map", None)
+        """Upgrades that the player bought for this weapon."""
+        
         
         self.fire_rate_ratio = 1000
-        self.reload_delay_ms = 1000
+        self.reload_delay_ms = kwargs.pop("reload_delay_ms", 1000)
         
         self.last_shot_time = None
         self.reload_start_time = None
@@ -54,10 +74,13 @@ class Weapon(pygame.sprite.Sprite):
         self.last_dir: int = 1
         """The direction that this weapon was pointing to on the last frame (left: -1, right: 1)."""
         
+        self.weapon_scale = kwargs.pop("weapon_scale", 1)
+        self.store_scale = kwargs.pop("store_scale", 1)
+        
         self.fire_frames = [pygame.Surface((1,1))]
         """The animation frames of this weapon when firing/attacking."""
             
-        self.idle_frame = self.fire_frames[0]
+        self.idle_frame = game_controller.scale_image(pygame.image.load(resources.get_weapon_path(self.weapon_type, enums.AnimActions.IDLE)), self.weapon_scale, enums.ConvertType.CONVERT_ALPHA)
         """The image of this weapon when not animating."""
             
         self.image = self.idle_frame
@@ -79,6 +102,12 @@ class Weapon(pygame.sprite.Sprite):
         """The current frame of reloading animation."""
         self.reloading = False
         """If the weapon reloading animation is running."""
+        self.reload_end_frame = kwargs.pop("reload_end_frame", 1)
+        
+        self.changing_weapon = False
+        """If the weapon change animation is running."""
+        
+        self.pumping = False
         
         self.bullet_spawn_offset: vec = kwargs.pop("bullet_spawn_distance", vec(0,0))
         """The distance from the weapon anchor to the barrel, where the bullet will spawn"""
@@ -97,6 +126,7 @@ class Weapon(pygame.sprite.Sprite):
     def shoot(self, bullet_pos: vec, player_net_id: int, **kwargs):
         self.firing = True
         self.magazine_bullets -= 1
+        self.bullet_kill_callback = kwargs.pop("kill_callback", lambda b: None)
         
 
     def update(self, **kwargs):
@@ -151,6 +181,10 @@ class Weapon(pygame.sprite.Sprite):
             return False
         
         _now = datetime.datetime.now()
+        
+        #if the player is switching weapons
+        if self.changing_weapon:
+            return
         
         # if is still reloading
         if self.reload_start_time != None and _now - datetime.timedelta(milliseconds= self.reload_delay_ms) <= self.reload_start_time:
